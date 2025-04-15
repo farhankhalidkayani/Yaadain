@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Mic, Pause, Play, Square, RefreshCw } from 'lucide-react';
 import { transcribeAudio } from '@/lib/openai';
 import { useToast } from '@/hooks/use-toast';
-import { uploadAudio } from '@/lib/firebase';
 
 type RecorderState = 'inactive' | 'recording' | 'paused' | 'preview';
 
@@ -146,9 +145,6 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
     setIsProcessing(true);
     
     try {
-      // Check if test mode is enabled (for handling Firebase)
-      const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
-      
       // Show transcription toast
       toast({
         title: "Transcribing...",
@@ -160,21 +156,12 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
       const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
       
       try {
-        // Get Firebase user if we have one (for authenticated mode)
-        const user = getCurrentUser();
-        
-        // Upload the audio file to Firebase Storage if we have a user
-        let uploadedAudioUrl = audioUrl;
-        if (user && !testModeEnabled) {
-          uploadedAudioUrl = await uploadAudio(audioFile);
-        }
-        
         // Transcribe the audio using OpenAI
         const { text } = await transcribeAudio(audioFile);
         
         // Call the completion callback with the audio URL and transcribed text
         onRecordingComplete({
-          audioUrl: uploadedAudioUrl,
+          audioUrl: audioUrl,
           text
         });
       } catch (error) {

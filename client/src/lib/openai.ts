@@ -2,13 +2,23 @@ import { getCurrentUser } from './firebase';
 
 // Transcribe audio recording using OpenAI API
 export async function transcribeAudio(audioFile: File): Promise<{ text: string }> {
-  const user = getCurrentUser();
-  if (!user) throw new Error("Not authenticated");
+  // Check if test mode is enabled
+  const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
+  
+  // For authenticated mode, get the user if not in test mode
+  let user = null;
+  if (!testModeEnabled) {
+    user = getCurrentUser();
+  }
   
   // Create a FormData object to send the audio file
   const formData = new FormData();
   formData.append('audio', audioFile);
-  formData.append('userId', user.uid);
+  
+  // Add userId if available
+  if (user) {
+    formData.append('userId', user.uid);
+  }
   
   try {
     // Call the backend endpoint for transcription
@@ -32,17 +42,23 @@ export async function transcribeAudio(audioFile: File): Promise<{ text: string }
 
 // Enhance transcribed text with GPT-4
 export async function enhanceStory(text: string): Promise<{ enhancedText: string }> {
-  const user = getCurrentUser();
-  if (!user) throw new Error("Not authenticated");
-  
   try {
-    // Call the backend endpoint for story enhancement
+    // Apply simple enhancement in test mode
+    const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
+    if (testModeEnabled) {
+      // This is a simplified enhancement that will work offline for testing
+      return {
+        enhancedText: `# A Special Memory\n\n${text}\n\nThis moment was captured on ${new Date().toLocaleDateString()}.`
+      };
+    }
+    
+    // For production mode, call the backend endpoint
     const response = await fetch('/api/enhance-story', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text, userId: user.uid }),
+      body: JSON.stringify({ text }),
       credentials: 'include',
     });
     
