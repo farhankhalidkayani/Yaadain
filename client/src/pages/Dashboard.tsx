@@ -163,27 +163,53 @@ const Dashboard = () => {
         // Add a delay to simulate AI processing time (2 seconds)
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Create detailed enhanced content based on the transcription
-        if (data.text.includes("park") || data.text.includes("bird")) {
-          enhancedText = `I went to the park today and it was absolutely magical. The weather was perfect - not too warm, with a gentle breeze that rustled through the trees. The birds were especially active, with vibrant blue jays and cheerful robins darting between branches. I sat on a bench near the pond, watching the sunlight dance on the water while children played nearby. These small moments of peace in nature always remind me how beautiful the world can be when we slow down enough to notice it.`;
+        // Create a more detailed story that expands on the user's input
+        // First, identify potential keywords in the user's transcription
+        const userText = data.text.toLowerCase();
+        let storyTheme = "general";
+        
+        // Determine the theme of the story based on keywords
+        if (userText.includes("park") || userText.includes("walk") || userText.includes("nature") || 
+            userText.includes("bird") || userText.includes("tree") || userText.includes("outside")) {
+          storyTheme = "nature";
         } 
-        else if (data.text.includes("lunch") || data.text.includes("friend") || data.text.includes("college")) {
-          enhancedText = `Today's lunch with my old college friend was like stepping back in time. We met at that little café we used to frequent as students - they still make that amazing tomato soup we both loved. As we reminisced about our college days, all those memories came flooding back: the late-night study sessions, the impromptu road trips, and those profound conversations that shaped who we would become. It's remarkable how some friendships remain unchanged despite the years that pass between meetings. I'm so grateful for these connections that have endured through all of life's changes.`;
+        else if (userText.includes("lunch") || userText.includes("friend") || userText.includes("college") || 
+                userText.includes("meet") || userText.includes("school") || userText.includes("university")) {
+          storyTheme = "friendship";
         }
-        else if (data.text.includes("grandmother") || data.text.includes("cooking") || data.text.includes("recipe")) {
-          enhancedText = `My grandmother's apple pie recipe has been on my mind all week. I can still picture her in the kitchen, her hands dusted with flour, carefully crimping the edges of the crust with experienced fingers. The scent of cinnamon and apples would fill the entire house, drawing everyone to the kitchen in anticipation. She never measured ingredients - it was always a pinch of this, a dash of that. When I finally tried making it myself years later, I realized the missing ingredient was the love and patience she poured into every pie. Some flavors are tied to our deepest memories, carrying the essence of the people we've loved and the moments we've shared with them.`;
+        else if (userText.includes("grandmother") || userText.includes("grandfather") || userText.includes("family") || 
+                userText.includes("cooking") || userText.includes("recipe") || userText.includes("home")) {
+          storyTheme = "family";
+        }
+        else if (userText.includes("travel") || userText.includes("trip") || userText.includes("vacation") || 
+                userText.includes("journey") || userText.includes("destination") || userText.includes("abroad")) {
+          storyTheme = "travel";
+        }
+        
+        // Set the enhancement prefix to remind the user this is their transcribed text
+        let enhancementPrefix = `${data.text}\n\n`;
+        
+        // If transcription is very short, don't add the prefix
+        if (data.text.length < 15) {
+          enhancementPrefix = "";
+        }
+        
+        // Generate theme-appropriate enhanced content
+        if (storyTheme === "nature") {
+          enhancedText = `${enhancementPrefix}As I was experiencing nature, I noticed how the world around me seemed alive with color and sound. The trees swayed gently in the breeze, their leaves creating a soothing rustling melody. Birds called to each other, their songs a reminder of nature's constant conversations. The light filtered through the canopy in golden rays, painting patterns on the ground. In these moments surrounded by natural beauty, I felt a deep sense of peace and connection to something larger than myself. It reminded me why I seek these quiet natural spaces - they restore something essential in my soul that the busy modern world often depletes.`;
+        } 
+        else if (storyTheme === "friendship") {
+          enhancedText = `${enhancementPrefix}Spending time with my friend brought back a flood of memories and emotions. We fell into our familiar patterns of conversation and humor almost immediately, as if no time had passed. There's something uniquely comforting about being with someone who has known you through different phases of life - they hold pieces of your history that might otherwise be forgotten. As we laughed about old stories and shared updates about our lives, I was struck by how rare and valuable these authentic connections are. Even as we've both changed and grown, the foundation of our friendship remains solid, a touchstone I can return to again and again throughout life's journey.`;
+        }
+        else if (storyTheme === "family") {
+          enhancedText = `${enhancementPrefix}Family traditions have a way of weaving through our lives, connecting generations and creating a sense of continuity. The familiar scents, tastes, and rituals become more than just habits - they transform into vehicles that transport us through time, connecting us to loved ones both present and past. As I think about our family gatherings and the recipes passed down through generations, I realize these aren't just activities but a form of living heritage. In each gesture and shared moment, we honor those who came before us while creating new memories for those who will someday reminisce about us. These ties of tradition and shared experience form the unseen bonds that hold us together even when distance or time separates us.`;
+        }
+        else if (storyTheme === "travel") {
+          enhancedText = `${enhancementPrefix}Traveling has always changed my perspective in unexpected ways. Beyond the excitement of seeing new places, there's something profound about stepping outside my familiar surroundings and routines. The world expands with each new experience, each conversation with someone whose life has taken a completely different path from my own. I find myself noticing small details I might overlook at home - the particular quality of light in a new landscape, unfamiliar scents and sounds, the rhythm of daily life in a different culture. These journeys become part of who I am, broadening my understanding and leaving me with memories that I can revisit long after I've returned home. Each trip feels like opening a new chapter in my personal story.`;
         }
         else {
-          // Generic enhancements for any other transcriptions
-          const enhancements = [
-            `The moment seemed ordinary at the time, but looking back, I realize how special it truly was. The light was golden that afternoon, casting long shadows across the room as we talked and laughed without awareness of how precious this simple time together would become in my memory. I try to hold onto these feelings, knowing that someday I'll look back on today with the same fond nostalgia.`,
-            
-            `What started as a simple conversation evolved into one of those deep, meaningful exchanges that stay with you. We talked about our hopes, our fears, and all those small defining moments that have shaped who we are. It's remarkable how human connection can transform an ordinary day into something extraordinary - a reminder that the most valuable moments in life are often the quietest ones.`,
-            
-            `I've been reflecting a lot lately on how life's journey unfolds in unexpected ways. The paths we choose, the people we meet, the seemingly random events that end up changing everything - it all weaves together into this complex tapestry of experience. Today added another beautiful thread to that ongoing story, another memory to cherish as part of the greater whole.`
-          ];
-          
-          enhancedText = `${data.text}\n\n${enhancements[Math.floor(Math.random() * enhancements.length)]}`;
+          // For general themes, create an enhancement that builds on the transcription
+          enhancedText = `${enhancementPrefix}Reflecting more deeply on this experience, I'm reminded of how our most meaningful moments often arrive unexpectedly. What seems like an ordinary day can suddenly transform into a memory that stays with us for years to come. I try to remain present for these moments, to fully absorb the feelings, the surroundings, the small details that make each experience unique. Life moves so quickly sometimes that we risk missing the quiet significance of our daily experiences. But when we pause to truly notice and appreciate these moments, we create a treasury of memories that sustain us through life's inevitable challenges. This particular memory feels like one I'll return to often - a reminder of what truly matters in my journey.`;
         }
       } else {
         // Normal enhancement for non-test mode

@@ -161,15 +161,14 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
         
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Generate a basic mock transcript
-        const mockTranscripts = [
-          "I went to the park today and saw some beautiful birds flying around. The weather was nice and sunny.",
-          "Today I had lunch with my old friend from college. We talked about our favorite memories from those days.",
-          "I'm thinking about my grandmother's cooking recipes. She used to make the best apple pie in the world."
-        ];
+        // Let's use a prompt to get actual input from the user for the transcription
+        const userInputPrompt = prompt(
+          "📝 TEST MODE: Since we can't access your actual voice recording, please type what you said:", 
+          "I went to the park today"
+        );
         
-        // Select a random base transcript
-        const mockTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
+        // Use the user's input or a default if they cancel
+        const mockTranscript = userInputPrompt || "I recorded a memory about something important to me.";
         
         // Call the completion callback with mock data
         onRecordingComplete({
