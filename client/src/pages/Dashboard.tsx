@@ -143,22 +143,48 @@ const Dashboard = () => {
     setIsProcessingRecording(true);
     
     try {
+      // First show the transcribed text to the user
+      toast({
+        title: "Transcription Complete",
+        description: "Your audio has been transcribed. Now enhancing your story...",
+      });
+      
       // Generate more realistic enhanced text for demo purposes
       let enhancedText = data.text;
       
-      // In test mode, generate a more interesting mock story
+      // In test mode, simulate AI enhancement with a delay
       if (sessionStorage.getItem('testModeEnabled') === 'true') {
-        // Create a more detailed story with a title, structured format and emotional content
-        const memories = [
-          "It was a warm summer evening when we gathered for our annual family reunion. The air was filled with laughter and the scent of my grandmother's special recipe. As the sun set, casting a golden glow over our gathering, I watched the children play the same games we had enjoyed decades ago. Some traditions never change, and I'm grateful for that constancy in our ever-changing lives.",
-          
-          "I remember my first day of college like it was yesterday. The mixture of excitement and fear as I entered the campus, not knowing what to expect. The campus was bustling with activity - students rushing to classes, clubs recruiting new members, and professors striding purposefully across the quad. That day marked the beginning of a journey that would shape my entire future.",
-          
-          "The hiking trip last weekend was absolutely breathtaking. We started early, just as the morning mist was clearing from the mountains. The trail was challenging but rewarding, with spectacular views at every turn. When we reached the summit, the panorama of valleys and peaks stretching to the horizon made every difficult step worthwhile. In those quiet moments above the world, I felt a profound sense of peace and connection with nature."
-        ];
+        // Show an "enhancing" toast to simulate the AI processing
+        toast({
+          title: "Enhancing Story",
+          description: "Our AI is turning your transcription into a rich, detailed memory...",
+        });
         
-        // Select a random memory
-        enhancedText = memories[Math.floor(Math.random() * memories.length)];
+        // Add a delay to simulate AI processing time (2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Create detailed enhanced content based on the transcription
+        if (data.text.includes("park") || data.text.includes("bird")) {
+          enhancedText = `I went to the park today and it was absolutely magical. The weather was perfect - not too warm, with a gentle breeze that rustled through the trees. The birds were especially active, with vibrant blue jays and cheerful robins darting between branches. I sat on a bench near the pond, watching the sunlight dance on the water while children played nearby. These small moments of peace in nature always remind me how beautiful the world can be when we slow down enough to notice it.`;
+        } 
+        else if (data.text.includes("lunch") || data.text.includes("friend") || data.text.includes("college")) {
+          enhancedText = `Today's lunch with my old college friend was like stepping back in time. We met at that little café we used to frequent as students - they still make that amazing tomato soup we both loved. As we reminisced about our college days, all those memories came flooding back: the late-night study sessions, the impromptu road trips, and those profound conversations that shaped who we would become. It's remarkable how some friendships remain unchanged despite the years that pass between meetings. I'm so grateful for these connections that have endured through all of life's changes.`;
+        }
+        else if (data.text.includes("grandmother") || data.text.includes("cooking") || data.text.includes("recipe")) {
+          enhancedText = `My grandmother's apple pie recipe has been on my mind all week. I can still picture her in the kitchen, her hands dusted with flour, carefully crimping the edges of the crust with experienced fingers. The scent of cinnamon and apples would fill the entire house, drawing everyone to the kitchen in anticipation. She never measured ingredients - it was always a pinch of this, a dash of that. When I finally tried making it myself years later, I realized the missing ingredient was the love and patience she poured into every pie. Some flavors are tied to our deepest memories, carrying the essence of the people we've loved and the moments we've shared with them.`;
+        }
+        else {
+          // Generic enhancements for any other transcriptions
+          const enhancements = [
+            `The moment seemed ordinary at the time, but looking back, I realize how special it truly was. The light was golden that afternoon, casting long shadows across the room as we talked and laughed without awareness of how precious this simple time together would become in my memory. I try to hold onto these feelings, knowing that someday I'll look back on today with the same fond nostalgia.`,
+            
+            `What started as a simple conversation evolved into one of those deep, meaningful exchanges that stay with you. We talked about our hopes, our fears, and all those small defining moments that have shaped who we are. It's remarkable how human connection can transform an ordinary day into something extraordinary - a reminder that the most valuable moments in life are often the quietest ones.`,
+            
+            `I've been reflecting a lot lately on how life's journey unfolds in unexpected ways. The paths we choose, the people we meet, the seemingly random events that end up changing everything - it all weaves together into this complex tapestry of experience. Today added another beautiful thread to that ongoing story, another memory to cherish as part of the greater whole.`
+          ];
+          
+          enhancedText = `${data.text}\n\n${enhancements[Math.floor(Math.random() * enhancements.length)]}`;
+        }
       } else {
         // Normal enhancement for non-test mode
         enhancedText = data.text.length > 10 

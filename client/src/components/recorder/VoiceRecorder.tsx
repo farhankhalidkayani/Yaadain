@@ -151,10 +151,25 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
       
       if (testModeEnabled) {
         // In test mode, we don't call Firebase or OpenAI APIs
-        console.log("Test mode: skipping Firebase upload and OpenAI transcription");
+        console.log("Test mode: creating mock transcription");
         
-        // Generate a mock transcript
-        const mockTranscript = "This is a test memory created in development mode. The voice recording functionality requires OpenAI and Firebase to be properly configured.";
+        // First, simulate the transcription process (2 seconds)
+        toast({
+          title: "Transcribing...",
+          description: "Converting your voice recording to text.",
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Generate a basic mock transcript
+        const mockTranscripts = [
+          "I went to the park today and saw some beautiful birds flying around. The weather was nice and sunny.",
+          "Today I had lunch with my old friend from college. We talked about our favorite memories from those days.",
+          "I'm thinking about my grandmother's cooking recipes. She used to make the best apple pie in the world."
+        ];
+        
+        // Select a random base transcript
+        const mockTranscript = mockTranscripts[Math.floor(Math.random() * mockTranscripts.length)];
         
         // Call the completion callback with mock data
         onRecordingComplete({
