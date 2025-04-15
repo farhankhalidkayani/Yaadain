@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { FcGoogle } from 'react-icons/fc';
 import { registerWithEmail, loginWithGoogle } from '@/lib/firebase';
+import { AlertCircle } from 'lucide-react';
 
 const Register = () => {
   const [name, setName] = useState('');
@@ -185,10 +186,26 @@ const Register = () => {
               variant="outline"
               onClick={handleGoogleRegister}
               disabled={isLoading}
-              className="w-full"
+              className="w-full mb-3"
             >
               <FcGoogle className="mr-2 h-5 w-5" />
               Sign Up with Google
+            </Button>
+            
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-3 flex items-start">
+              <AlertCircle className="h-5 w-5 text-amber-500 mr-2 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">Development Mode</p>
+                <p className="text-xs text-amber-700">Firebase authentication is required but not configured. Use the test login button below.</p>
+              </div>
+            </div>
+            
+            <Button
+              variant="secondary"
+              onClick={() => setLocation('/')}
+              className="w-full"
+            >
+              Enter as Test User
             </Button>
           </CardContent>
           

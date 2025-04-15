@@ -3,13 +3,16 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
+// Log for debugging purposes
+console.log("Creating mock authentication for testing");
+
 // Firebase configuration object
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
-  authDomain: `${import.meta.env.VITE_FIREBASE_PROJECT_ID || ""}.firebaseapp.com`,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
-  storageBucket: `${import.meta.env.VITE_FIREBASE_PROJECT_ID || ""}.appspot.com`,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "mock-api-key",
+  authDomain: `${import.meta.env.VITE_FIREBASE_PROJECT_ID || "mock-project-id"}.firebaseapp.com`,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "mock-project-id",
+  storageBucket: `${import.meta.env.VITE_FIREBASE_PROJECT_ID || "mock-project-id"}.appspot.com`,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "mock-app-id",
 };
 
 // Initialize Firebase
