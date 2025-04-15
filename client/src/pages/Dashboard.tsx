@@ -143,14 +143,32 @@ const Dashboard = () => {
     setIsProcessingRecording(true);
     
     try {
-      // Mock enhancement for demo purposes
-      const enhancedText = data.text.length > 10 
-        ? `${data.text}\n\nI still remember the feeling that day - the warmth in my heart, the sense of belonging. These are the memories we cherish forever.`
-        : data.text;
+      // Generate more realistic enhanced text for demo purposes
+      let enhancedText = data.text;
+      
+      // In test mode, generate a more interesting mock story
+      if (sessionStorage.getItem('testModeEnabled') === 'true') {
+        // Create a more detailed story with a title, structured format and emotional content
+        const memories = [
+          "It was a warm summer evening when we gathered for our annual family reunion. The air was filled with laughter and the scent of my grandmother's special recipe. As the sun set, casting a golden glow over our gathering, I watched the children play the same games we had enjoyed decades ago. Some traditions never change, and I'm grateful for that constancy in our ever-changing lives.",
+          
+          "I remember my first day of college like it was yesterday. The mixture of excitement and fear as I entered the campus, not knowing what to expect. The campus was bustling with activity - students rushing to classes, clubs recruiting new members, and professors striding purposefully across the quad. That day marked the beginning of a journey that would shape my entire future.",
+          
+          "The hiking trip last weekend was absolutely breathtaking. We started early, just as the morning mist was clearing from the mountains. The trail was challenging but rewarding, with spectacular views at every turn. When we reached the summit, the panorama of valleys and peaks stretching to the horizon made every difficult step worthwhile. In those quiet moments above the world, I felt a profound sense of peace and connection with nature."
+        ];
+        
+        // Select a random memory
+        enhancedText = memories[Math.floor(Math.random() * memories.length)];
+      } else {
+        // Normal enhancement for non-test mode
+        enhancedText = data.text.length > 10 
+          ? `${data.text}\n\nI still remember the feeling that day - the warmth in my heart, the sense of belonging. These are the memories we cherish forever.`
+          : data.text;
+      }
         
       // Create a new memory with the audio URL and enhanced text
       const memoryData = {
-        title: data.text.split('\n')[0] || 'New Memory',
+        title: enhancedText.split('.')[0] || 'New Memory', // Use first sentence as title
         text: enhancedText,
         audioUrl: data.audioUrl || "https://example.com/mock-audio.mp3", // Use provided URL or fallback
         originalText: data.text,
