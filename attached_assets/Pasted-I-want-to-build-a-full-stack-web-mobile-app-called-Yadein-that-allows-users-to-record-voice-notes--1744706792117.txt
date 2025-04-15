@@ -1,0 +1,73 @@
+I want to build a full-stack web & mobile app called Yadein that allows users to record voice notes, transcribe them into text using OpenAI’s GPT-4 API, and then store them as digital stories. The app should also offer a subscription model for unlimited storage and allow users to order physical books of their memories.
+
+Tech Stack:
+Frontend: React.js (for web) and React Native (for mobile)
+
+Backend: Node.js with Express
+
+Database & Storage: Firebase (Firestore for data, Firebase Storage for voice notes & images)
+
+Authentication: Firebase Auth (Google login & email/password login)
+
+AI Features: OpenAI GPT-4 API for transcribing and enhancing stories
+
+Payment Integration: Stripe (for subscriptions & book purchases)
+
+Core Features & Functionality
+1. User Authentication:
+Allow users to sign up and log in using Google or email/password.
+
+Store user profile info (name, email, profile picture).
+
+2. Voice Note Recording & Storage:
+Users can record a voice note (up to 5 minutes).
+
+Store voice notes in Firebase Storage.
+
+Display a list of recorded memories on the user’s dashboard.
+
+3. AI-Powered Story Generation:
+Once a voice note is recorded, send it to OpenAI’s Whisper API for transcription.
+
+Use GPT-4 to enhance the story by asking follow-up questions.
+
+Store the final transcribed story in Firestore.
+
+4. Digital Memory Book:
+Users can view and edit their stories.
+
+Allow users to upload Polaroid-style images to attach to stories.
+
+Option to download a free digital version of their memory book.
+
+5. Subscription Model:
+Free Users: Can save up to 3 books.
+
+Premium Users ($5/month via Stripe):
+
+Unlimited book storage.
+
+Ability to create a Year-End Memory Book with their best stories.
+
+15% discount on physical book purchases.
+
+6. Physical Book Ordering System:
+Users can select stories and images to order a printed memory book.
+
+Stripe integration for payment processing.
+
+After purchase, generate a print-ready PDF of the book.
+
+7. User Dashboard:
+Show a list of saved stories with edit & delete options.
+
+Show subscription status and upgrade option.
+
+Additional Notes:
+The app should have a clean, modern UI with a sentimental & nostalgic feel.
+
+Ensure mobile responsiveness for both web & mobile users.
+
+Implement a simple admin panel to manage orders & subscriptions.
+
+Please generate the React (frontend) and Node.js (backend) code with Firebase integration to start building this app.
