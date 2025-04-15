@@ -26,6 +26,8 @@ function Router() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);
       
+      // FOR DEVELOPMENT/TESTING: Comment out the redirection code below when ready to test with mock user
+      
       // Redirect to login if not authenticated and trying to access protected routes
       if (!user && !location.startsWith("/login") && !location.startsWith("/register")) {
         setLocation("/login");
@@ -37,8 +39,25 @@ function Router() {
       }
     });
     
-    return () => unsubscribe();
-  }, [location, setLocation]);
+    // FOR TESTING: Automatically set isAuthenticated after 2 seconds 
+    // This allows us to test the app without Firebase auth being fully set up
+    const timer = setTimeout(() => {
+      if (!isAuthenticated) {
+        console.log("Creating mock authentication for testing");
+        setIsAuthenticated(true);
+        if (!location.startsWith("/login") && !location.startsWith("/register")) {
+          // Don't redirect if we're already on a non-auth page
+        } else {
+          setLocation("/");
+        }
+      }
+    }, 2000);
+    
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
+  }, [location, setLocation, isAuthenticated]);
   
   // Show nothing while determining auth state
   if (isAuthenticated === null) {

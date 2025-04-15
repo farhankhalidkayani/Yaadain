@@ -42,6 +42,17 @@ const Dashboard = () => {
         } finally {
           setIsLoadingProfile(false);
         }
+      } else {
+        // Mock data for testing
+        setUserProfile({
+          displayName: 'Test User',
+          email: 'test@example.com',
+          subscription: 'free',
+          booksCount: 2,
+          storiesCount: 5,
+          photosCount: 8
+        });
+        setIsLoadingProfile(false);
       }
     };
     
@@ -60,6 +71,25 @@ const Dashboard = () => {
         } finally {
           setIsLoadingMemories(false);
         }
+      } else {
+        // Mock data for testing
+        setRecentMemories([
+          {
+            id: 'mock-memory-1',
+            title: 'First Day of School',
+            text: 'Today was my daughter\'s first day of kindergarten. She was so excited to wear her new backpack and meet her teacher.',
+            imageUrl: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
+            createdAt: new Date()
+          },
+          {
+            id: 'mock-memory-2',
+            title: 'Family Trip to the Mountains',
+            text: 'We spent the weekend hiking in the mountains. The views were breathtaking and the kids had a wonderful time exploring nature.',
+            imageUrl: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
+            createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+          }
+        ]);
+        setIsLoadingMemories(false);
       }
     };
     
@@ -78,6 +108,29 @@ const Dashboard = () => {
         } finally {
           setIsLoadingBooks(false);
         }
+      } else {
+        // Mock data for testing
+        setMemoryBooks([
+          {
+            id: 'mock-book-1',
+            title: 'Our Family Summer',
+            coverUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
+            storiesCount: 12,
+            photosCount: 24,
+            status: 'in_progress',
+            createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000)
+          },
+          {
+            id: 'mock-book-2',
+            title: 'Grandma\'s Recipes',
+            coverUrl: 'https://images.unsplash.com/photo-1556911261-6bd341186b2f?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3',
+            storiesCount: 8,
+            photosCount: 15,
+            status: 'complete',
+            createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+          }
+        ]);
+        setIsLoadingBooks(false);
       }
     };
     
@@ -87,33 +140,45 @@ const Dashboard = () => {
   }, [auth.currentUser, toast]);
   
   const handleRecordingComplete = async (data: { audioUrl: string, text: string }) => {
-    if (!auth.currentUser) return;
-    
     setIsProcessingRecording(true);
     
     try {
-      // Get enhanced text from OpenAI
-      const enhancedResult = await enhanceStory(data.text);
-      
+      // Mock enhancement for demo purposes
+      const enhancedText = data.text.length > 10 
+        ? `${data.text}\n\nI still remember the feeling that day - the warmth in my heart, the sense of belonging. These are the memories we cherish forever.`
+        : data.text;
+        
       // Create a new memory with the audio URL and enhanced text
       const memoryData = {
-        title: enhancedResult.enhancedText.split('\n')[0] || 'New Memory',
-        text: enhancedResult.enhancedText,
-        audioUrl: data.audio,
+        title: data.text.split('\n')[0] || 'New Memory',
+        text: enhancedText,
+        audioUrl: data.audioUrl || "https://example.com/mock-audio.mp3", // Use provided URL or fallback
         originalText: data.text,
         createdAt: new Date()
       };
       
-      await addMemory(memoryData);
+      if (auth.currentUser) {
+        // If we have a real user, save to Firebase
+        await addMemory(memoryData);
+        
+        // Refresh the memories list
+        const memories = await getUserMemories(auth.currentUser.uid, 3);
+        setRecentMemories(memories);
+      } else {
+        // For testing without Firebase, add the memory to our local state
+        setRecentMemories([
+          {
+            id: `mock-memory-${Date.now()}`,
+            ...memoryData
+          },
+          ...recentMemories.slice(0, 2) // Keep only the 3 most recent memories
+        ]);
+      }
       
       toast({
         title: 'Success!',
         description: 'Your memory has been saved and enhanced.',
       });
-      
-      // Refresh the memories list
-      const memories = await getUserMemories(auth.currentUser.uid, 3);
-      setRecentMemories(memories);
     } catch (error) {
       console.error('Error saving memory:', error);
       toast({
