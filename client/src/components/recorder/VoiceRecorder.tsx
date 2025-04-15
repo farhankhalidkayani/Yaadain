@@ -146,21 +146,40 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
     setIsProcessing(true);
     
     try {
-      // Convert the audio blob to a file for upload
-      const audioBlob = await fetch(audioUrl).then(r => r.blob());
-      const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+      // Check if test mode is enabled
+      const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
       
-      // Upload the audio file to Firebase Storage
-      const uploadedAudioUrl = await uploadAudio(audioFile);
-      
-      // Transcribe the audio using OpenAI
-      const { text } = await transcribeAudio(audioFile);
-      
-      // Call the completion callback with the audio URL and transcribed text
-      onRecordingComplete({
-        audioUrl: uploadedAudioUrl,
-        text
-      });
+      if (testModeEnabled) {
+        // In test mode, we don't call Firebase or OpenAI APIs
+        console.log("Test mode: skipping Firebase upload and OpenAI transcription");
+        
+        // Generate a mock transcript
+        const mockTranscript = "This is a test memory created in development mode. The voice recording functionality requires OpenAI and Firebase to be properly configured.";
+        
+        // Call the completion callback with mock data
+        onRecordingComplete({
+          audioUrl: audioUrl, // Use the local audio URL
+          text: mockTranscript
+        });
+        
+      } else {
+        // Normal production flow:
+        // Convert the audio blob to a file for upload
+        const audioBlob = await fetch(audioUrl).then(r => r.blob());
+        const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+        
+        // Upload the audio file to Firebase Storage
+        const uploadedAudioUrl = await uploadAudio(audioFile);
+        
+        // Transcribe the audio using OpenAI
+        const { text } = await transcribeAudio(audioFile);
+        
+        // Call the completion callback with the audio URL and transcribed text
+        onRecordingComplete({
+          audioUrl: uploadedAudioUrl,
+          text
+        });
+      }
       
       // Reset the recorder
       discardRecording();
@@ -301,12 +320,15 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
         )}
       </div>
       
-      <style jsx>{`
+      {/* Keyframe animation styles */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes wave {
           0%, 100% { height: 5px; }
           50% { height: 25px; }
         }
-      `}</style>
+        `
+      }} />
     </div>
   );
 };
