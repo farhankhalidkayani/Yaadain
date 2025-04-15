@@ -146,44 +146,28 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
     setIsProcessing(true);
     
     try {
-      // Check if test mode is enabled
+      // Check if test mode is enabled (for handling Firebase)
       const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
       
-      if (testModeEnabled) {
-        // In test mode, we don't call Firebase or OpenAI APIs
-        console.log("Test mode: creating mock transcription");
+      // Show transcription toast
+      toast({
+        title: "Transcribing...",
+        description: "Converting your voice recording to text.",
+      });
+      
+      // Convert the audio blob to a file for upload
+      const audioBlob = await fetch(audioUrl).then(r => r.blob());
+      const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+      
+      try {
+        // Get Firebase user if we have one (for authenticated mode)
+        const user = getCurrentUser();
         
-        // First, simulate the transcription process (2 seconds)
-        toast({
-          title: "Transcribing...",
-          description: "Converting your voice recording to text.",
-        });
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Let's use a prompt to get actual input from the user for the transcription
-        const userInputPrompt = prompt(
-          "📝 TEST MODE: Since we can't access your actual voice recording, please type what you said:", 
-          "I went to the park today"
-        );
-        
-        // Use the user's input or a default if they cancel
-        const mockTranscript = userInputPrompt || "I recorded a memory about something important to me.";
-        
-        // Call the completion callback with mock data
-        onRecordingComplete({
-          audioUrl: audioUrl, // Use the local audio URL
-          text: mockTranscript
-        });
-        
-      } else {
-        // Normal production flow:
-        // Convert the audio blob to a file for upload
-        const audioBlob = await fetch(audioUrl).then(r => r.blob());
-        const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
-        
-        // Upload the audio file to Firebase Storage
-        const uploadedAudioUrl = await uploadAudio(audioFile);
+        // Upload the audio file to Firebase Storage if we have a user
+        let uploadedAudioUrl = audioUrl;
+        if (user && !testModeEnabled) {
+          uploadedAudioUrl = await uploadAudio(audioFile);
+        }
         
         // Transcribe the audio using OpenAI
         const { text } = await transcribeAudio(audioFile);
@@ -192,6 +176,20 @@ const VoiceRecorder = ({ onRecordingComplete }: { onRecordingComplete: (data: { 
         onRecordingComplete({
           audioUrl: uploadedAudioUrl,
           text
+        });
+      } catch (error) {
+        console.error("Error processing voice recording:", error);
+        
+        // If OpenAI transcription fails, we need a fallback for demo purposes
+        const fallbackText = prompt(
+          "📝 We couldn't transcribe your audio. Please type what you said:", 
+          "I recorded a memory about something important to me."
+        ) || "I recorded a memory";
+        
+        // Call the completion callback with local data
+        onRecordingComplete({
+          audioUrl: audioUrl,
+          text: fallbackText
         });
       }
       

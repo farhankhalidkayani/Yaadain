@@ -7,8 +7,12 @@ import OpenAI from "openai";
 import * as fs from "fs";
 
 // Configure OpenAI
+if (!process.env.OPENAI_API_KEY) {
+  console.warn("Warning: OPENAI_API_KEY is not set. Voice transcription will not work correctly.");
+}
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || "sk-your-api-key",
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Configure file upload for audio and images
