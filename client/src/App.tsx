@@ -26,36 +26,48 @@ function Router() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setIsAuthenticated(!!user);
       
-      // FOR DEVELOPMENT/TESTING: Comment out the redirection code below when ready to test with mock user
+      // FOR DEVELOPMENT/TESTING: 
+      // We're using a special flag to detect if the test user button was clicked
+      const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
       
-      // Redirect to login if not authenticated and trying to access protected routes
-      if (!user && !location.startsWith("/login") && !location.startsWith("/register")) {
-        setLocation("/login");
-      }
-      
-      // Redirect to dashboard if authenticated and trying to access auth routes
-      if (user && (location.startsWith("/login") || location.startsWith("/register"))) {
-        setLocation("/");
-      }
-    });
-    
-    // FOR TESTING: Automatically set isAuthenticated after 2 seconds 
-    // This allows us to test the app without Firebase auth being fully set up
-    const timer = setTimeout(() => {
-      if (!isAuthenticated) {
-        console.log("Creating mock authentication for testing");
-        setIsAuthenticated(true);
-        if (!location.startsWith("/login") && !location.startsWith("/register")) {
-          // Don't redirect if we're already on a non-auth page
-        } else {
+      // If in test mode, don't perform these redirects
+      if (!testModeEnabled) {
+        // Redirect to login if not authenticated and trying to access protected routes
+        if (!user && !location.startsWith("/login") && !location.startsWith("/register")) {
+          setLocation("/login");
+        }
+        
+        // Redirect to dashboard if authenticated and trying to access auth routes
+        if (user && (location.startsWith("/login") || location.startsWith("/register"))) {
           setLocation("/");
         }
       }
-    }, 2000);
+    });
+    
+    // FOR TESTING: Check for test mode flag
+    const testModeEnabled = sessionStorage.getItem('testModeEnabled') === 'true';
+    if (testModeEnabled) {
+      console.log("Test mode enabled - bypassing authentication");
+      setIsAuthenticated(true);
+    } else {
+      // Fallback automatic test mode after 2 seconds
+      const timer = setTimeout(() => {
+        if (!isAuthenticated) {
+          console.log("Creating mock authentication for testing");
+          setIsAuthenticated(true);
+          if (!location.startsWith("/login") && !location.startsWith("/register")) {
+            // Don't redirect if we're already on a non-auth page
+          } else {
+            setLocation("/");
+          }
+        }
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
     
     return () => {
       unsubscribe();
-      clearTimeout(timer);
     };
   }, [location, setLocation, isAuthenticated]);
   

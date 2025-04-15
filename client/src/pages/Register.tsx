@@ -202,7 +202,11 @@ const Register = () => {
             
             <Button
               variant="secondary"
-              onClick={() => setLocation('/')}
+              onClick={() => {
+                // Set test mode flag
+                sessionStorage.setItem('testModeEnabled', 'true');
+                setLocation('/');
+              }}
               className="w-full"
             >
               Enter as Test User
