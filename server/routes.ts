@@ -10,18 +10,85 @@ import dotenv from "dotenv";
 // Load environment variables directly in this file
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-// Configure OpenAI
+// Configure OpenAI (still used for story enhancement, not for transcription)
 const openaiApiKey = process.env.OPENAI_API_KEY;
 if (!openaiApiKey) {
   console.warn(
-    "Warning: OPENAI_API_KEY is not set. Voice transcription will not work correctly."
+    "Warning: OPENAI_API_KEY is not set. Story enhancement features may not work correctly."
   );
+}
+
+// Import Whisper model from transformers (used for all voice transcription)
+let whisperPipeline: any = null;
+let isLoadingWhisperModel = false;
+let whisperModelError: Error | null = null;
+
+// Initialize the Whisper model asynchronously
+async function loadWhisperModel() {
+  if (whisperPipeline !== null || isLoadingWhisperModel) return;
+
+  try {
+    isLoadingWhisperModel = true;
+    console.log("Loading local Whisper model...");
+
+    const { pipeline } = await import("@xenova/transformers");
+    whisperPipeline = await pipeline(
+      "automatic-speech-recognition",
+      "Xenova/whisper-tiny.en" // Use tiny.en model for efficiency, can upgrade to small/base/etc if needed
+    );
+
+    console.log("Local Whisper model loaded successfully");
+  } catch (error) {
+    console.error("Failed to load Whisper model:", error);
+    whisperModelError = error as Error;
+  } finally {
+    isLoadingWhisperModel = false;
+  }
+}
+
+// Start loading Whisper model in background
+loadWhisperModel();
+
+// Function to transcribe audio using local Whisper model
+async function transcribeWithWhisper(audioFilePath: string): Promise<string> {
+  if (whisperModelError) {
+    throw new Error(
+      `Whisper model failed to load: ${whisperModelError.message}`
+    );
+  }
+
+  if (!whisperPipeline) {
+    console.log("Waiting for Whisper model to load...");
+    await loadWhisperModel();
+
+    // If still null after trying to load, throw error
+    if (!whisperPipeline) {
+      throw new Error("Failed to load Whisper model for transcription");
+    }
+  }
+
+  console.log("Transcribing with Whisper model...");
+
+  try {
+    const result = await whisperPipeline(audioFilePath, {
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      language: "english",
+      return_timestamps: false,
+    });
+
+    console.log("Whisper transcription successful");
+    return result.text;
+  } catch (error) {
+    console.error("Whisper transcription error:", error);
+    throw error;
+  }
 }
 
 const openai = new OpenAI({
   apiKey: openaiApiKey,
-  timeout: 30000, // Extend timeout to 30 seconds
-  maxRetries: 3, // Add automatic retries
+  timeout: 120000, // Increase timeout to 120 seconds (2 minutes)
+  maxRetries: 5, // Increase automatic retries
 });
 
 // Helper function to add retry logic for API calls
@@ -456,50 +523,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "No audio file provided" });
         }
 
-        // Add more detailed logging to troubleshoot connection issues
         console.log(
-          `Starting transcription for file: ${req.file.path} (${req.file.size} bytes)`
+          `Starting transcription for file: ${req.file.path} (${req.file.size} bytes, type: ${req.file.mimetype})`
         );
 
-        const transcription = await withRetry(
-          () => {
-            console.log("Attempting to transcribe audio with OpenAI API...");
-            return openai.audio.transcriptions.create({
-              file: fs.createReadStream(req.file!.path),
-              model: "whisper-1",
-            });
-          },
-          5,
-          2000
-        ); // 5 retries with 2 second initial delay
-
-        console.log("Transcription successful");
+        // Use Whisper model for all transcriptions
+        console.log("Using Whisper model for transcription...");
+        const transcriptionText = await transcribeWithWhisper(req.file.path);
+        console.log(
+          "Whisper transcription successful:",
+          transcriptionText.substring(0, 50) + "..."
+        );
 
         // Clean up the uploaded file
-        fs.unlinkSync(req.file.path);
-
-        res.json({ text: transcription.text });
-      } catch (error) {
-        console.error("Error transcribing audio:", error);
-
-        // Log more details about network errors
-        if (
-          error &&
-          typeof error === "object" &&
-          "cause" in error &&
-          error.cause &&
-          typeof error.cause === "object" &&
-          "code" in error.cause
-        ) {
-          console.error(`Network error code: ${error.cause.code}`);
+        try {
+          if (fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+          }
+        } catch (cleanupError) {
+          console.error("Error removing temporary audio file:", cleanupError);
+          // Non-blocking error, continue with the response
         }
+
+        res.json({ text: transcriptionText });
+      } catch (error: any) {
+        console.error("Error in transcription endpoint:", error);
 
         // Clean up the uploaded file if it exists
-        if (req.file && fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
+        try {
+          if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+          }
+        } catch (cleanupError) {
+          console.error("Error cleaning up file after error:", cleanupError);
         }
 
-        res.status(500).json({ message: "Failed to transcribe audio" });
+        res.status(500).json({
+          message:
+            "Failed to transcribe audio. Whisper model transcription failed.",
+          error: error.message || "TRANSCRIPTION_FAILED",
+        });
       }
     }
   );
