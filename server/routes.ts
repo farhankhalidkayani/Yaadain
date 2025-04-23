@@ -131,13 +131,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if it's a Firebase UID (string format) or a numeric ID
       if (/^[a-zA-Z0-9]{20,}$/.test(userId)) {
-        // This looks like a Firebase UID - handle differently
+        // Handle Firebase UIDs by querying Firestore directly
         console.log("Processing request with Firebase UID");
 
-        // Return empty array or handle Firebase auth users
-        // In a real implementation, you might look up a mapped userId in your database
-        // For now, we'll return an empty array to prevent errors
-        return res.json([]);
+        // Import here to avoid circular dependencies
+        const { getMemoriesByFirebaseUID } = await import("./firebase-admin");
+        const memories = await getMemoriesByFirebaseUID(userId);
+
+        console.log(
+          `Retrieved ${memories.length} memories from Firestore for Firebase user ${userId}`
+        );
+        return res.json(memories);
       }
 
       // Original logic for numeric IDs
@@ -248,12 +252,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if it's a Firebase UID (string format) or a numeric ID
       if (/^[a-zA-Z0-9]{20,}$/.test(userId)) {
-        // This looks like a Firebase UID - handle differently
+        // Handle Firebase UIDs by querying Firestore directly
         console.log("Processing request with Firebase UID");
 
-        // Return empty array or handle Firebase auth users
-        // For now, we'll return an empty array to prevent errors
-        return res.json([]);
+        // Import here to avoid circular dependencies
+        const { getBooksByFirebaseUID } = await import("./firebase-admin");
+        const books = await getBooksByFirebaseUID(userId);
+
+        console.log(
+          `Retrieved ${books.length} books from Firestore for Firebase user ${userId}`
+        );
+        return res.json(books);
       }
 
       // Original logic for numeric IDs

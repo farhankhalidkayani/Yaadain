@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import MemoryBookCard from "@/components/books/MemoryBookCard";
@@ -13,6 +13,7 @@ const MemoryBooks = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [location] = useLocation();
   const { toast } = useToast();
 
   const fetchBooks = async () => {
@@ -53,9 +54,13 @@ const MemoryBooks = () => {
     }
   };
 
+  // Fetch books when component mounts and when location changes
   useEffect(() => {
-    fetchBooks();
-  }, []);
+    // Only fetch when we're on the memory books page
+    if (location === "/memory-books") {
+      fetchBooks();
+    }
+  }, [location]);
 
   const canCreateNewBook =
     userProfile?.subscription === "premium" || (books && books.length < 3);

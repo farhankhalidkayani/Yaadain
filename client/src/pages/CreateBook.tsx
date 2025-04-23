@@ -120,14 +120,8 @@ const CreateBook = () => {
           description: "Memory book created successfully!",
         });
 
-        // Make sure bookId is a string before navigating
-        if (bookId && typeof bookId === "string") {
-          console.log("Navigating to:", `/memory-books/${bookId}`);
-          navigate(`/memory-books/${bookId}`);
-        } else {
-          console.error("Invalid bookId returned:", bookId);
-          throw new Error("Failed to get a valid book ID");
-        }
+        // Navigate back to the memory books list instead of directly to the book detail
+        navigate("/memory-books");
       } catch (bookError) {
         console.error("Error in addBook operation:", bookError);
         throw new Error(

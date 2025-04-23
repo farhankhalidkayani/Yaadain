@@ -140,3 +140,5 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+server/credentials/yaadain-b4f3f-firebase-adminsdk-fbsvc-67c8e4d34e.json
