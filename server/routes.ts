@@ -6,6 +6,12 @@ import path from "path";
 import OpenAI from "openai";
 import * as fs from "fs";
 import dotenv from "dotenv";
+import { promisify } from "util";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+
+// Set up ffmpeg path
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 // Load environment variables directly in this file
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -17,11 +23,13 @@ if (!openaiApiKey) {
     "Warning: OPENAI_API_KEY is not set. Story enhancement features may not work correctly."
   );
 }
+const openai = new OpenAI({ apiKey: openaiApiKey });
 
 // Import Whisper model from transformers (used for all voice transcription)
 let whisperPipeline: any = null;
 let isLoadingWhisperModel = false;
 let whisperModelError: Error | null = null;
+let isUsingFallback = false;
 
 // Initialize the Whisper model asynchronously
 async function loadWhisperModel() {
@@ -31,16 +39,35 @@ async function loadWhisperModel() {
     isLoadingWhisperModel = true;
     console.log("Loading local Whisper model...");
 
-    const { pipeline } = await import("@xenova/transformers");
-    whisperPipeline = await pipeline(
-      "automatic-speech-recognition",
-      "Xenova/whisper-tiny.en" // Use tiny.en model for efficiency, can upgrade to small/base/etc if needed
-    );
-
-    console.log("Local Whisper model loaded successfully");
+    try {
+      const { pipeline } = await import("@xenova/transformers");
+      // Try tiny model first as it loads faster
+      whisperPipeline = await pipeline(
+        "automatic-speech-recognition",
+        "Xenova/whisper-tiny.en"
+      );
+      console.log("Local Whisper tiny model loaded successfully");
+    } catch (tinyError) {
+      console.warn(
+        "Failed to load tiny model, falling back to base model:",
+        tinyError
+      );
+      try {
+        const { pipeline } = await import("@xenova/transformers");
+        whisperPipeline = await pipeline(
+          "automatic-speech-recognition",
+          "Xenova/whisper-base.en"
+        );
+        console.log("Local Whisper base model loaded successfully");
+      } catch (baseError) {
+        throw baseError;
+      }
+    }
   } catch (error) {
-    console.error("Failed to load Whisper model:", error);
+    console.error("Failed to load any Whisper model:", error);
     whisperModelError = error as Error;
+    isUsingFallback = true;
+    console.log("Will use OpenAI as fallback for transcription");
   } finally {
     isLoadingWhisperModel = false;
   }
@@ -49,87 +76,246 @@ async function loadWhisperModel() {
 // Start loading Whisper model in background
 loadWhisperModel();
 
-// Function to transcribe audio using local Whisper model
-async function transcribeWithWhisper(audioFilePath: string): Promise<string> {
-  if (whisperModelError) {
-    throw new Error(
-      `Whisper model failed to load: ${whisperModelError.message}`
-    );
-  }
-
-  if (!whisperPipeline) {
-    console.log("Waiting for Whisper model to load...");
-    await loadWhisperModel();
-
-    // If still null after trying to load, throw error
-    if (!whisperPipeline) {
-      throw new Error("Failed to load Whisper model for transcription");
-    }
-  }
-
-  console.log("Transcribing with Whisper model...");
-
+// Function to transcribe audio using OpenAI API as a fallback
+async function transcribeWithOpenAI(audioFilePath: string): Promise<string> {
   try {
-    const result = await whisperPipeline(audioFilePath, {
-      chunk_length_s: 30,
-      stride_length_s: 5,
-      language: "english",
-      return_timestamps: false,
+    if (!openaiApiKey) {
+      throw new Error("OpenAI API key not configured");
+    }
+
+    console.log("Transcribing with OpenAI...");
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(audioFilePath),
+      model: "whisper-1",
+      language: "en",
     });
 
-    console.log("Whisper transcription successful");
-    return result.text;
+    console.log("OpenAI transcription successful");
+    return transcription.text;
   } catch (error) {
-    console.error("Whisper transcription error:", error);
+    console.error("OpenAI transcription error:", error);
+    throw new Error(
+      "Failed to transcribe with OpenAI: " + (error as Error).message
+    );
+  }
+}
+
+// Function to convert any audio format to WAV using ffmpeg
+async function convertAudioToWav(inputPath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Create output filename
+    const outputPath = inputPath.replace(/\.[^/.]+$/, "") + ".processed.wav";
+
+    console.log(
+      `Converting audio file to WAV format: ${inputPath} -> ${outputPath}`
+    );
+
+    ffmpeg(inputPath)
+      .outputOptions([
+        "-ar 16000", // 16kHz sample rate (what Whisper expects)
+        "-ac 1", // mono audio
+        "-c:a pcm_s16le", // PCM 16-bit audio
+      ])
+      .output(outputPath)
+      .on("end", () => {
+        console.log("Audio conversion complete");
+        resolve(outputPath);
+      })
+      .on("error", (err) => {
+        console.error("Error during audio conversion:", err);
+        reject(err);
+      })
+      .run();
+  });
+}
+
+// Function to load audio into a Float32Array
+async function loadAudioAsFloat32Array(
+  audioPath: string
+): Promise<Float32Array> {
+  const fs = await import("fs").then((m) => m.default || m);
+  const util = await import("util").then((m) => m.default || m);
+  const readFile = util.promisify(fs.readFile);
+
+  try {
+    // Read the file data
+    const audioBuffer = await readFile(audioPath);
+
+    // For WAV files:
+    // The data portion starts after the header (44 bytes for standard WAV)
+    // Each sample is 2 bytes (16-bit) in little-endian format
+    const headerSize = 44;
+    const bytesPerSample = 2;
+    const numSamples = (audioBuffer.length - headerSize) / bytesPerSample;
+    const audioData = new Float32Array(numSamples);
+
+    // Convert 16-bit PCM samples to normalized float in [-1,1]
+    for (let i = 0; i < numSamples; i++) {
+      const sampleIndex = headerSize + i * bytesPerSample;
+      // Convert from 16-bit signed integer to float
+      const sample = audioBuffer.readInt16LE(sampleIndex);
+      audioData[i] = sample / 32768.0; // Normalize to [-1, 1]
+    }
+
+    console.log(`Loaded ${numSamples} audio samples as Float32Array`);
+    return audioData;
+  } catch (error) {
+    console.error("Error loading audio file:", error);
     throw error;
   }
 }
 
-const openai = new OpenAI({
-  apiKey: openaiApiKey,
-  timeout: 120000, // Increase timeout to 120 seconds (2 minutes)
-  maxRetries: 5, // Increase automatic retries
-});
+// Function to transcribe audio using local Whisper model
+async function transcribeWithWhisper(audioFilePath: string): Promise<string> {
+  // First try to load the model if it hasn't been loaded yet
+  if (!whisperPipeline && !isUsingFallback && !isLoadingWhisperModel) {
+    try {
+      await loadWhisperModel();
+    } catch (loadError) {
+      console.error("Failed to load Whisper model:", loadError);
+      whisperModelError = loadError as Error;
+      isUsingFallback = true;
+    }
+  }
 
-// Helper function to add retry logic for API calls
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  delay = 1000
-): Promise<T> {
+  // If there was an error loading the model or we're using fallback mode, use OpenAI API
+  if (isUsingFallback || whisperModelError) {
+    console.log("Using OpenAI as fallback for transcription");
+    try {
+      return await transcribeWithOpenAI(audioFilePath);
+    } catch (openaiError) {
+      console.error("OpenAI fallback also failed:", openaiError);
+      throw new Error(
+        "All transcription methods failed. Please try again later."
+      );
+    }
+  }
+
+  // If the model is still loading, wait for it
+  if (isLoadingWhisperModel) {
+    console.log("Waiting for Whisper model to load...");
+    // Wait up to 30 seconds for the model to load
+    for (let i = 0; i < 30; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!isLoadingWhisperModel) {
+        break;
+      }
+    }
+
+    // If it's still loading after timeout, use OpenAI
+    if (isLoadingWhisperModel || whisperModelError) {
+      console.log(
+        "Whisper model taking too long to load, using OpenAI as fallback"
+      );
+      try {
+        return await transcribeWithOpenAI(audioFilePath);
+      } catch (openaiError) {
+        console.error("OpenAI fallback also failed:", openaiError);
+        throw new Error(
+          "All transcription methods failed. Please try again later."
+        );
+      }
+    }
+  }
+
+  // If we still don't have the model by now, something went wrong
+  if (!whisperPipeline) {
+    throw new Error("Failed to load Whisper model for transcription");
+  }
+
+  console.log("Transcribing with local Whisper model...");
+
   try {
-    return await fn();
-  } catch (error: any) {
-    if (retries <= 0 || !isRetryableError(error)) {
-      throw error;
+    // First convert the audio to a format Whisper will definitely understand
+    console.log("Converting audio to proper format...");
+    const processedAudioPath = await convertAudioToWav(audioFilePath);
+
+    // Now load the audio data as Float32Array
+    console.log("Loading audio data...");
+    const audioData = await loadAudioAsFloat32Array(processedAudioPath);
+
+    console.log("Running Whisper transcription...");
+    // Pass audio data directly to the model as Float32Array
+    const result = await whisperPipeline(audioData, {
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      language: "english",
+      return_timestamps: false,
+      sampling_rate: 16000, // Required for Whisper models
+    });
+
+    // Clean up temporary processed file
+    try {
+      fs.unlinkSync(processedAudioPath);
+    } catch (cleanupErr) {
+      console.warn("Couldn't delete temporary file:", cleanupErr);
+    }
+
+    // If the transcription is blank or just a period, try again with additional parameters
+    if (
+      !result.text ||
+      result.text.trim() === "." ||
+      result.text.trim() === "[SOUND]" ||
+      result.text.trim() === ". [SOUND]"
+    ) {
+      console.log(
+        "Initial transcription was minimal, trying with different parameters..."
+      );
+
+      // Try again with different parameters
+      const result2 = await whisperPipeline(audioData, {
+        chunk_length_s: 10, // Shorter chunks
+        stride_length_s: 1, // Less overlap
+        language: "english",
+        task: "transcribe", // Force transcribe task
+        return_timestamps: false,
+        sampling_rate: 16000,
+        no_speech_threshold: 0.1, // More sensitive to speech
+      });
+
+      if (
+        !result2.text ||
+        result2.text.trim() === "." ||
+        result2.text.trim() === "[SOUND]"
+      ) {
+        console.log(
+          "Still got minimal transcription. Trying OpenAI as a last resort..."
+        );
+
+        try {
+          return await transcribeWithOpenAI(audioFilePath);
+        } catch (openaiError) {
+          console.error("OpenAI fallback also failed:", openaiError);
+          return "We couldn't detect clear speech in this recording. Please try recording again with more volume or less background noise.";
+        }
+      }
+
+      console.log(
+        "Second attempt transcription successful:",
+        result2.text.substring(0, 50) + "..."
+      );
+      return result2.text;
     }
 
     console.log(
-      `API call failed. Retrying in ${delay}ms... (${retries} attempts left)`
+      "Whisper transcription successful:",
+      result.text.substring(0, 50) + "..."
     );
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    return withRetry(fn, retries - 1, delay * 2); // Exponential backoff
+    return result.text;
+  } catch (error) {
+    console.error("Whisper transcription error:", error);
+
+    // Try OpenAI as fallback if local processing fails
+    console.log("Local Whisper failed, trying OpenAI as fallback...");
+    try {
+      return await transcribeWithOpenAI(audioFilePath);
+    } catch (openaiError) {
+      console.error("OpenAI fallback also failed:", openaiError);
+      throw new Error(
+        "All transcription methods failed: " + (error as Error).message
+      );
+    }
   }
-}
-
-// Helper to determine if an error is retryable
-function isRetryableError(error: any): boolean {
-  // Network errors or rate limit errors are retryable
-  const retryableErrors = [
-    "ECONNRESET",
-    "ETIMEDOUT",
-    "ECONNREFUSED",
-    "ENOTFOUND",
-    "429",
-  ];
-
-  return (
-    (error.code && retryableErrors.includes(error.code)) ||
-    (error.cause &&
-      error.cause.code &&
-      retryableErrors.includes(error.cause.code)) ||
-    (error.status && error.status === 429)
-  );
 }
 
 // Configure file upload for audio and images
