@@ -126,3 +126,45 @@ export async function enhanceStory(
     throw error;
   }
 }
+
+// Correct transcript and generate appropriate title
+export async function correctTranscriptAndGenerateTitle(
+  text: string
+): Promise<{ correctedText: string; title: string }> {
+  try {
+    // Apply simple enhancement in test mode
+    const testModeEnabled =
+      sessionStorage.getItem("testModeEnabled") === "true";
+    if (testModeEnabled) {
+      // This is a simplified correction that will work offline for testing
+      return {
+        correctedText: text,
+        title: "My Recorded Memory",
+      };
+    }
+
+    // For production mode, call the backend endpoint
+    const response = await fetch("/api/correct-transcript", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || "Failed to correct transcript");
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error correcting transcript:", error);
+    // Return original text if there's an error
+    return {
+      correctedText: text,
+      title: "New Memory",
+    };
+  }
+}

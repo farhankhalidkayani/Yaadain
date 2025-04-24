@@ -787,6 +787,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // New endpoint for transcript correction and title generation
+  app.post("/api/correct-transcript", async (req: Request, res: Response) => {
+    const { text } = req.body;
+
+    try {
+      if (!text) {
+        return res.status(400).json({ message: "Text is required" });
+      }
+
+      console.log(
+        "Correcting transcript and generating title for:",
+        text.substring(0, 50) + "..."
+      );
+
+      // Use OpenAI to correct transcript and generate title
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return both the corrected transcript and the title in JSON format.",
+          },
+          {
+            role: "user",
+            content: `Please correct this transcript and generate an appropriate title: "${text}"`,
+          },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1000,
+      });
+
+      // Parse the JSON response
+      let result;
+      try {
+        const content = response.choices[0].message.content;
+        if (!content) throw new Error("Empty response from OpenAI");
+        result = JSON.parse(content);
+
+        if (!result.correctedText || !result.title) {
+          // Ensure we have both required fields
+          throw new Error("Invalid response format");
+        }
+      } catch (parseError) {
+        console.error("Error parsing JSON response:", parseError);
+        // Fallback response if parsing fails
+        result = {
+          correctedText: text,
+          title: "My Memory",
+        };
+      }
+
+      console.log(`Generated title: "${result.title}"`);
+      console.log(
+        "Corrected text:",
+        result.correctedText.substring(0, 50) + "..."
+      );
+
+      res.json({
+        correctedText: result.correctedText,
+        title: result.title,
+      });
+    } catch (error) {
+      console.error("Error correcting transcript:", error);
+      res.status(500).json({
+        message: "Failed to correct transcript",
+        // Return original values as fallback
+        correctedText: text,
+        title: "New Memory",
+      });
+    }
+  });
+
   // Stripe payment integration endpoints
   app.post("/api/create-subscription", async (req: Request, res: Response) => {
     try {

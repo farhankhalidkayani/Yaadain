@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Pause, Play, Square, RefreshCw } from "lucide-react";
-import { transcribeAudio } from "@/lib/openai";
+import {
+  transcribeAudio,
+  correctTranscriptAndGenerateTitle,
+} from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
 
 type RecorderState = "inactive" | "recording" | "paused" | "preview";
@@ -9,7 +12,11 @@ type RecorderState = "inactive" | "recording" | "paused" | "preview";
 const VoiceRecorder = ({
   onRecordingComplete,
 }: {
-  onRecordingComplete: (data: { audioUrl: string; text: string }) => void;
+  onRecordingComplete: (data: {
+    audioUrl: string;
+    text: string;
+    title: string;
+  }) => void;
 }) => {
   const [state, setState] = useState<RecorderState>("inactive");
   const [recordingTime, setRecordingTime] = useState(0);
@@ -182,8 +189,8 @@ const VoiceRecorder = ({
     try {
       // Show transcription toast
       toast({
-        title: "Transcribing...",
-        description: "Converting your voice recording to text.",
+        title: "Processing...",
+        description: "Converting your voice recording to text...",
       });
 
       // Convert the audio blob to a file for upload
@@ -209,29 +216,48 @@ const VoiceRecorder = ({
       });
 
       try {
-        // Transcribe the audio using our API
-        const { text } = await transcribeAudio(audioFile);
+        // Step 1: Transcribe the audio using our API
+        const { text: rawTranscription } = await transcribeAudio(audioFile);
 
         // Check if we got a meaningful transcription
         if (
-          !text ||
-          text.trim() === "." ||
-          text.trim() === "[SOUND]" ||
-          text.trim() === ". [SOUND]"
+          !rawTranscription ||
+          rawTranscription.trim() === "." ||
+          rawTranscription.trim() === "[SOUND]" ||
+          rawTranscription.trim() === ". [SOUND]"
         ) {
-          console.warn("Transcription returned minimal result:", text);
+          console.warn(
+            "Transcription returned minimal result:",
+            rawTranscription
+          );
           throw new Error("Transcription didn't detect meaningful speech");
         }
 
-        // Call the completion callback with the audio URL and transcribed text
+        // Step 2: Correct the transcript and generate a title
+        toast({
+          title: "Enhancing...",
+          description:
+            "Improving transcription quality and generating a title...",
+        });
+
+        const { correctedText, title } =
+          await correctTranscriptAndGenerateTitle(rawTranscription);
+
+        // Call the completion callback with the audio URL, corrected text, and title
         onRecordingComplete({
           audioUrl: audioUrl,
-          text,
+          text: correctedText,
+          title: title,
+        });
+
+        toast({
+          title: "Success!",
+          description: "Your memory has been transcribed and enhanced.",
         });
       } catch (error) {
         console.error("Error processing voice recording:", error);
 
-        // If transcription fails, we need a fallback for demo purposes
+        // If transcription or correction fails, we need a fallback
         const fallbackText =
           prompt(
             "📝 We couldn't transcribe your audio clearly. Please type what you said:",
@@ -242,6 +268,7 @@ const VoiceRecorder = ({
         onRecordingComplete({
           audioUrl: audioUrl,
           text: fallbackText,
+          title: "My Memory", // Default title
         });
       }
 
