@@ -1047,6 +1047,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // Audio Upload Endpoint
+  app.post(
+    "/api/upload-audio",
+    upload.single("audio"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!req.file) {
+          console.error("No audio file provided");
+          return res.status(400).json({ message: "No audio file provided" });
+        }
+
+        console.log("Audio file received:", req.file);
+
+        const userId = req.body.userId;
+        if (!userId) {
+          console.error("No userId provided in request");
+          return res.status(400).json({ message: "User ID is required" });
+        }
+
+        console.log(`Processing audio upload for user ${userId}`);
+
+        try {
+          // Create uploads directory if it doesn't exist
+          const uploadDir = path.join(process.cwd(), "uploads");
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+
+          // Get the uploaded file details
+          const filePath = req.file.path;
+          const fileName = req.file.filename;
+
+          console.log(`File saved at: ${filePath}`);
+
+          // Generate URL for the uploaded file
+          const serverHost = req.get("host") || "localhost:8000";
+          const protocol = req.protocol || "http";
+          const audioUrl = `${protocol}://${serverHost}/uploads/${fileName}`;
+
+          console.log(`Audio URL generated: ${audioUrl}`);
+
+          // Return success response with the audio URL
+          return res.status(200).json({
+            success: true,
+            audioUrl,
+            message: "Audio uploaded successfully",
+          });
+        } catch (error) {
+          console.error("Error processing audio:", error);
+
+          // Clean up the uploaded file if it exists
+          if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+          }
+
+          return res.status(500).json({ message: "Failed to process audio" });
+        }
+      } catch (error) {
+        console.error("Error in upload-audio endpoint:", error);
+
+        // Clean up the uploaded file if it exists
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+
+        return res.status(500).json({ message: "Failed to upload audio" });
+      }
+    }
+  );
+
   // Add static file serving for uploads directory
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

@@ -6,6 +6,7 @@ import {
   correctTranscriptAndGenerateTitle,
 } from "@/lib/openai";
 import { useToast } from "@/hooks/use-toast";
+import { uploadAudio } from "@/lib/firebase";
 
 type RecorderState = "inactive" | "recording" | "paused" | "preview";
 
@@ -24,13 +25,72 @@ const VoiceRecorder = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackListenersAttached = useRef(false);
   const { toast } = useToast();
 
+  // Clean up function to safely handle audio element
+  const cleanupAudio = () => {
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+
+        // Remove all event listeners
+        if (playbackListenersAttached.current) {
+          audioRef.current.removeEventListener(
+            "loadedmetadata",
+            handleLoadedMetadata
+          );
+          audioRef.current.removeEventListener("timeupdate", handleTimeUpdate);
+          audioRef.current.removeEventListener("ended", handleEnded);
+          audioRef.current.removeEventListener("error", handleError);
+          playbackListenersAttached.current = false;
+        }
+
+        audioRef.current = null;
+      } catch (error) {
+        console.error("Error cleaning up audio:", error);
+      }
+    }
+
+    setIsPlaying(false);
+  };
+
+  // Event handlers to attach to audio element
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setAudioDuration(audioRef.current.duration || 0);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentPlaybackTime(audioRef.current.currentTime || 0);
+    }
+  };
+
+  const handleEnded = () => {
+    setIsPlaying(false);
+    setCurrentPlaybackTime(0);
+  };
+
+  const handleError = (error: Event) => {
+    console.error("Audio playback error:", error);
+    toast({
+      title: "Playback Error",
+      description:
+        "There was a problem playing this audio. Please try recording again.",
+      variant: "destructive",
+    });
+    setIsPlaying(false);
+  };
+
+  // Cleanup timer on unmount or state change
   useEffect(() => {
     if (state === "recording") {
       timerRef.current = window.setInterval(() => {
@@ -47,29 +107,49 @@ const VoiceRecorder = ({
     };
   }, [state]);
 
+  // Setup audio element when URL is available
   useEffect(() => {
+    // Clean up previous audio element
+    cleanupAudio();
+
+    // Create and setup new audio element if URL is available
     if (audioUrl && state === "preview") {
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
+      try {
+        const audio = new Audio();
+        audio.src = audioUrl;
+        audio.preload = "auto";
+        audioRef.current = audio;
 
-      audio.addEventListener("loadedmetadata", () => {
-        setAudioDuration(audio.duration);
-      });
+        // Add event listeners
+        audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+        audio.addEventListener("timeupdate", handleTimeUpdate);
+        audio.addEventListener("ended", handleEnded);
+        audio.addEventListener("error", handleError);
+        playbackListenersAttached.current = true;
 
-      audio.addEventListener("timeupdate", () => {
-        setCurrentPlaybackTime(audio.currentTime);
-      });
-
-      audio.addEventListener("ended", () => {
-        setCurrentPlaybackTime(0);
-      });
-
-      return () => {
-        audio.pause();
-        URL.revokeObjectURL(audioUrl);
-        audioRef.current = null;
-      };
+        // Load audio data
+        audio.load();
+      } catch (error) {
+        console.error("Error setting up audio element:", error);
+        toast({
+          title: "Error",
+          description: "Failed to prepare audio for playback.",
+          variant: "destructive",
+        });
+      }
     }
+
+    // Clean up on unmount
+    return () => {
+      if (audioUrl) {
+        try {
+          URL.revokeObjectURL(audioUrl);
+        } catch (error) {
+          console.error("Error revoking object URL:", error);
+        }
+      }
+      cleanupAudio();
+    };
   }, [audioUrl, state]);
 
   const startRecording = async () => {
@@ -80,8 +160,6 @@ const VoiceRecorder = ({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          channelCount: 1, // Mono audio is better for speech recognition
-          sampleRate: 16000, // 16kHz is ideal for Whisper
         },
       });
 
@@ -89,8 +167,8 @@ const VoiceRecorder = ({
       let mimeType = "audio/webm";
 
       // Check supported mime types in order of preference
-      if (MediaRecorder.isTypeSupported("audio/webm;codecs=pcm")) {
-        mimeType = "audio/webm;codecs=pcm"; // Uncompressed PCM is best
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        mimeType = "audio/webm;codecs=opus"; // Opus generally has good compatibility
       } else if (MediaRecorder.isTypeSupported("audio/webm")) {
         mimeType = "audio/webm"; // Standard WebM
       } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
@@ -115,10 +193,25 @@ const VoiceRecorder = ({
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
+      mediaRecorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: mimeType,
+          });
+
+          // Create a temporary URL for preview
+          const tempUrl = URL.createObjectURL(audioBlob);
+          setAudioUrl(tempUrl);
+
+          setState("preview");
+        } catch (error) {
+          console.error("Error creating audio blob:", error);
+          toast({
+            title: "Error",
+            description: "Failed to process the recording. Please try again.",
+            variant: "destructive",
+          });
+        }
       };
 
       // Request data every 1000ms (1 second chunks)
@@ -164,14 +257,57 @@ const VoiceRecorder = ({
   };
 
   const playRecording = () => {
-    if (audioRef.current) {
-      audioRef.current.play();
+    if (!audioRef.current || !audioUrl) {
+      console.error("Cannot play: Audio element or URL is not available");
+      return;
+    }
+
+    try {
+      // If already playing, pause it
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+        return;
+      }
+
+      // Otherwise start playback
+      const playPromise = audioRef.current.play();
+
+      // Modern browsers return a promise from play()
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((error) => {
+            console.error("Error playing audio:", error);
+            toast({
+              title: "Playback Error",
+              description:
+                "Failed to play the recording. The audio may be corrupted.",
+              variant: "destructive",
+            });
+          });
+      }
+    } catch (error) {
+      console.error("Error in playback:", error);
+      toast({
+        title: "Error",
+        description: "Failed to play the recording.",
+        variant: "destructive",
+      });
     }
   };
 
   const discardRecording = () => {
+    cleanupAudio();
+
     if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
+      try {
+        URL.revokeObjectURL(audioUrl);
+      } catch (error) {
+        console.error("Error revoking object URL:", error);
+      }
     }
 
     setState("inactive");
@@ -179,6 +315,7 @@ const VoiceRecorder = ({
     setRecordingTime(0);
     setCurrentPlaybackTime(0);
     setAudioDuration(0);
+    setIsPlaying(false);
   };
 
   const processRecording = async () => {
@@ -216,7 +353,15 @@ const VoiceRecorder = ({
       });
 
       try {
-        // Step 1: Transcribe the audio using our API
+        // Step 1: Upload the audio file to Firebase Storage to get a permanent URL
+        console.log("Uploading audio to Firebase Storage...");
+        const permanentAudioUrl = await uploadAudio(audioFile);
+        console.log(
+          "Audio uploaded successfully, permanent URL:",
+          permanentAudioUrl
+        );
+
+        // Step 2: Transcribe the audio using our API
         const { text: rawTranscription } = await transcribeAudio(audioFile);
 
         // Check if we got a meaningful transcription
@@ -233,7 +378,7 @@ const VoiceRecorder = ({
           throw new Error("Transcription didn't detect meaningful speech");
         }
 
-        // Step 2: Correct the transcript and generate a title
+        // Step 3: Correct the transcript and generate a title
         toast({
           title: "Enhancing...",
           description:
@@ -243,9 +388,9 @@ const VoiceRecorder = ({
         const { correctedText, title } =
           await correctTranscriptAndGenerateTitle(rawTranscription);
 
-        // Call the completion callback with the audio URL, corrected text, and title
+        // Call the completion callback with the PERMANENT audio URL, corrected text, and title
         onRecordingComplete({
-          audioUrl: audioUrl,
+          audioUrl: permanentAudioUrl, // Use the permanent Firebase Storage URL
           text: correctedText,
           title: title,
         });
@@ -257,19 +402,40 @@ const VoiceRecorder = ({
       } catch (error) {
         console.error("Error processing voice recording:", error);
 
-        // If transcription or correction fails, we need a fallback
-        const fallbackText =
-          prompt(
-            "📝 We couldn't transcribe your audio clearly. Please type what you said:",
-            "I recorded a memory about something important to me."
-          ) || "I recorded a memory";
+        // If transcription or correction fails, we still need to save the audio if possible
+        try {
+          // Try to upload the audio even if transcription failed
+          const permanentAudioUrl = await uploadAudio(audioFile);
 
-        // Call the completion callback with local data
-        onRecordingComplete({
-          audioUrl: audioUrl,
-          text: fallbackText,
-          title: "My Memory", // Default title
-        });
+          // If transcription or correction fails, we need a fallback
+          const fallbackText =
+            prompt(
+              "📝 We couldn't transcribe your audio clearly. Please type what you said:",
+              "I recorded a memory about something important to me."
+            ) || "I recorded a memory";
+
+          // Call the completion callback with permanent audio URL and fallback data
+          onRecordingComplete({
+            audioUrl: permanentAudioUrl,
+            text: fallbackText,
+            title: "My Memory", // Default title
+          });
+        } catch (uploadError) {
+          console.error("Failed to upload audio:", uploadError);
+
+          // As last resort, use the temporary URL
+          const fallbackText =
+            prompt(
+              "📝 We couldn't transcribe your audio. Please type what you said:",
+              "I recorded a memory about something important to me."
+            ) || "I recorded a memory";
+
+          onRecordingComplete({
+            audioUrl: audioUrl, // Use temporary URL as last resort
+            text: fallbackText,
+            title: "My Memory", // Default title
+          });
+        }
       }
 
       // Reset the recorder
@@ -380,7 +546,11 @@ const VoiceRecorder = ({
                 variant="ghost"
                 className="text-primary hover:text-primary-dark mr-3 p-2"
               >
-                <Play className="h-8 w-8" />
+                {isPlaying ? (
+                  <Pause className="h-8 w-8" />
+                ) : (
+                  <Play className="h-8 w-8" />
+                )}
               </Button>
 
               <div className="flex-1">

@@ -465,12 +465,44 @@ export const uploadAudio = async (file: File): Promise<string> => {
     const user = getCurrentUser();
     if (!user) throw new Error("Not authenticated");
 
-    const storageRef = ref(
-      storage,
-      `audio/${user.uid}/${Date.now()}_${file.name}`
-    );
-    await uploadBytes(storageRef, file);
-    return getDownloadURL(storageRef);
+    try {
+      // Create FormData object
+      const formData = new FormData();
+      formData.append("audio", file);
+      formData.append("userId", user.uid);
+
+      console.log("Sending audio upload request to server...");
+
+      // Make request to server endpoint
+      const response = await fetch("/api/upload-audio", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          "Server responded with error:",
+          response.status,
+          errorText
+        );
+        throw new Error(
+          `Upload failed: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+      console.log("Upload successful, server response:", data);
+
+      if (!data.audioUrl) {
+        throw new Error("Server did not return an audio URL");
+      }
+
+      return data.audioUrl;
+    } catch (error) {
+      console.error("Error in uploadAudio:", error);
+      throw error;
+    }
   });
 };
 

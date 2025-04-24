@@ -132,17 +132,6 @@ export async function correctTranscriptAndGenerateTitle(
   text: string
 ): Promise<{ correctedText: string; title: string }> {
   try {
-    // Apply simple enhancement in test mode
-    const testModeEnabled =
-      sessionStorage.getItem("testModeEnabled") === "true";
-    if (testModeEnabled) {
-      // This is a simplified correction that will work offline for testing
-      return {
-        correctedText: text,
-        title: "My Recorded Memory",
-      };
-    }
-
     // For production mode, call the backend endpoint
     const response = await fetch("/api/correct-transcript", {
       method: "POST",

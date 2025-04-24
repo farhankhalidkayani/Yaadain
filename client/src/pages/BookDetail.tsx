@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -34,6 +34,8 @@ import {
   Image as ImageIcon,
   Trash2,
   RefreshCcw,
+  Play,
+  Pause,
 } from "lucide-react";
 
 const BookDetail = () => {
@@ -51,6 +53,8 @@ const BookDetail = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isAddMemoryDialogOpen, setIsAddMemoryDialogOpen] = useState(false);
   const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const { toast } = useToast();
 
@@ -309,6 +313,75 @@ const BookDetail = () => {
         description: "Failed to complete book. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handlePlayAudio = (memory: any) => {
+    if (!memory?.audioUrl) {
+      toast({
+        title: "No Audio",
+        description: "This memory does not have an audio recording.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Stop current audio if playing
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        if (memory.id === playingAudioId) {
+          setPlayingAudioId(null);
+          return;
+        }
+      }
+
+      // Create a new audio player
+      const audio = new Audio(memory.audioUrl);
+
+      // Set up event listeners
+      audio.addEventListener("ended", () => setPlayingAudioId(null));
+      audio.addEventListener("error", (e) => {
+        console.error("Error playing audio:", e);
+        toast({
+          title: "Playback Error",
+          description:
+            "There was a problem playing this audio. The file may be corrupted or unavailable.",
+          variant: "destructive",
+        });
+        setPlayingAudioId(null);
+      });
+
+      // Store reference to the audio player
+      audioPlayerRef.current = audio;
+
+      // Play the audio
+      const playPromise = audio.play();
+
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setPlayingAudioId(memory.id);
+          })
+          .catch((error) => {
+            console.error("Error playing audio:", error);
+            toast({
+              title: "Playback Error",
+              description:
+                "Failed to play the recording. The audio may be unavailable.",
+              variant: "destructive",
+            });
+            setPlayingAudioId(null);
+          });
+      }
+    } catch (error) {
+      console.error("Error in audio playback:", error);
+      toast({
+        title: "Error",
+        description: "Failed to play the audio recording.",
+        variant: "destructive",
+      });
+      setPlayingAudioId(null);
     }
   };
 
@@ -597,21 +670,43 @@ const BookDetail = () => {
                               <p className="text-sm text-neutral-500 line-clamp-1">
                                 {memory.text}
                               </p>
+                              {memory.audioUrl && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-primary hover:text-primary-dark mt-1 px-2 py-0 h-auto text-xs"
+                                  onClick={() => handlePlayAudio(memory)}
+                                >
+                                  {playingAudioId === memory.id ? (
+                                    <>
+                                      <Pause className="h-3 w-3 mr-1" />
+                                      Pause Audio
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Play className="h-3 w-3 mr-1" />
+                                      Play Audio
+                                    </>
+                                  )}
+                                </Button>
+                              )}
                             </div>
                           </div>
 
-                          {book.status !== "complete" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-neutral-500 hover:text-red-500"
-                              onClick={() =>
-                                handleRemoveMemoryFromBook(memory.id)
-                              }
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
+                          <div className="flex items-center">
+                            {book.status !== "complete" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-neutral-500 hover:text-red-500"
+                                onClick={() =>
+                                  handleRemoveMemoryFromBook(memory.id)
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -687,10 +782,18 @@ const BookDetail = () => {
                           <Check className="h-3 w-3 text-white" />
                         )}
                       </div>
-                      <div>
-                        <h3 className="font-medium text-neutral-900">
-                          {memory.title}
-                        </h3>
+                      <div className="w-full">
+                        <div className="flex justify-between items-start">
+                          <h3 className="font-medium text-neutral-900">
+                            {memory.title}
+                          </h3>
+                          {memory.audioUrl && (
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full flex items-center">
+                              <Play className="h-2 w-2 mr-1" />
+                              Audio
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-neutral-500 line-clamp-2 mt-1">
                           {memory.text}
                         </p>
