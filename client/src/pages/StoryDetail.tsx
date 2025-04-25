@@ -217,15 +217,33 @@ const StoryDetail = () => {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!memory || !e.target.files || e.target.files.length === 0) return;
+    if (!memory || !e.target.files || e.target.files.length === 0) {
+      console.log("No memory or no file selected");
+      return;
+    }
 
     const file = e.target.files[0];
+    console.log(
+      "File selected for upload:",
+      file.name,
+      "Size:",
+      file.size,
+      "Type:",
+      file.type
+    );
 
     setIsUploading(true);
+    toast({
+      title: "Uploading...",
+      description: "Your image is being uploaded",
+    });
 
     try {
+      console.log("Starting image upload process");
       const imageUrl = await uploadImage(file);
+      console.log("Image uploaded successfully, received URL:", imageUrl);
 
+      console.log("Updating memory with new image URL");
       await updateMemory(memory.id, {
         imageUrl,
         updatedAt: new Date(),
@@ -354,27 +372,6 @@ const StoryDetail = () => {
                       Edit
                     </Button>
 
-                    <label className="cursor-pointer">
-                      <Button
-                        variant="outline"
-                        className={isUploading ? "opacity-50" : ""}
-                      >
-                        <ImageIcon className="h-4 w-4 mr-2" />
-                        {isUploading
-                          ? "Uploading..."
-                          : memory.imageUrl
-                          ? "Change Image"
-                          : "Add Image"}
-                      </Button>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleImageUpload}
-                        disabled={isUploading}
-                      />
-                    </label>
-
                     <Button
                       variant="outline"
                       className="text-red-500 hover:text-red-700 hover:bg-red-50"
@@ -410,7 +407,7 @@ const StoryDetail = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {memory.imageUrl && (
+            {memory.imageUrl ? (
               <div className="md:col-span-1">
                 <Card className="overflow-hidden bg-white border border-neutral-100 shadow-lg rounded-lg">
                   <CardContent className="p-0">
@@ -419,6 +416,59 @@ const StoryDetail = () => {
                       alt={memory.title}
                       className="w-full h-auto object-cover"
                     />
+                    <div className="p-3 bg-white border-t border-neutral-100">
+                      <label className="cursor-pointer w-full">
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          disabled={isUploading}
+                        >
+                          <ImageIcon className="h-4 w-4 mr-2" />
+                          {isUploading ? "Uploading..." : "Change Image"}
+                        </Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleImageUpload}
+                          disabled={isUploading}
+                        />
+                      </label>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <div className="md:col-span-1">
+                <Card className="bg-white border border-neutral-100 shadow-lg rounded-lg">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <div className="bg-neutral-50 p-4 rounded-full mb-4">
+                        <ImageIcon className="h-8 w-8 text-neutral-400" />
+                      </div>
+                      <h3 className="text-lg font-medium text-neutral-700 mb-2">
+                        No Image Added
+                      </h3>
+                      <p className="text-neutral-500 text-center text-sm mb-4">
+                        Add an image to enhance your memory
+                      </p>
+                      <label className="cursor-pointer">
+                        <Button
+                          variant="outline"
+                          className={isUploading ? "opacity-50" : ""}
+                        >
+                          <ImageIcon className="h-4 w-4 mr-2" />
+                          {isUploading ? "Uploading..." : "Add Image"}
+                        </Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleImageUpload}
+                          disabled={isUploading}
+                        />
+                      </label>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -426,7 +476,7 @@ const StoryDetail = () => {
 
             <div
               className={`${
-                memory.imageUrl ? "md:col-span-2" : "md:col-span-3"
+                memory.imageUrl ? "md:col-span-2" : "md:col-span-2"
               }`}
             >
               <Card className="bg-white shadow-md border border-neutral-100 overflow-hidden">

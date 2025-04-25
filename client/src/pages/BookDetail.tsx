@@ -23,6 +23,7 @@ import {
   uploadImage,
   getCurrentUser,
 } from "@/lib/firebase";
+import { generateBookPDF } from "@/lib/pdfUtils";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -36,6 +37,7 @@ import {
   RefreshCcw,
   Play,
   Pause,
+  FileDown,
 } from "lucide-react";
 
 const BookDetail = () => {
@@ -385,6 +387,31 @@ const BookDetail = () => {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!book || bookMemories.length === 0) return;
+
+    try {
+      toast({
+        title: "Preparing PDF",
+        description: "Please wait while we generate your memory book PDF...",
+      });
+
+      await generateBookPDF(book, bookMemories);
+
+      toast({
+        title: "Success",
+        description: "Your memory book PDF has been downloaded!",
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatDateSafe = (dateValue: any): string => {
     try {
       if (dateValue instanceof Date) {
@@ -540,6 +567,17 @@ const BookDetail = () => {
                       <Edit className="h-4 w-4 mr-2" />
                       Edit Details
                     </Button>
+
+                    {bookMemories.length > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={handleDownloadPdf}
+                        className="text-primary hover:text-primary-dark border-primary hover:border-primary-dark"
+                      >
+                        <FileDown className="h-4 w-4 mr-2" />
+                        Download PDF
+                      </Button>
+                    )}
 
                     {book.status === "complete" ? (
                       <Button asChild>

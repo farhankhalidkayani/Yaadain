@@ -837,7 +837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // New endpoint for transcript correction and title generation
+  // New endpoint for transcript correction and title generation using Ollama/Llama 3
   app.post("/api/correct-transcript", async (req: Request, res: Response) => {
     const { text } = req.body;
 
@@ -847,60 +847,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(
-        "Correcting transcript and generating title for:",
+        "Correcting transcript and generating title with Llama 3:",
         text.substring(0, 50) + "..."
       );
 
+      // Use Ollama with Llama 3 for transcript correction and title generation
       try {
-        // Use Ollama with Llama 3 for transcript correction and title generation
-        console.log("Using Ollama with Llama 3 for transcript correction");
         const response = await ollama.chat({
-          model: "llama3", // Make sure this model is installed on your Ollama instance
+          model: "llama3",
           messages: [
             {
               role: "system",
               content:
-                "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return your response in JSON format with 'correctedText' and 'title' fields.",
+                "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return both the corrected transcript and the title in JSON format with keys 'correctedText' and 'title'.",
             },
             {
               role: "user",
               content: `Please correct this transcript and generate an appropriate title: "${text}"`,
             },
           ],
-          format: "json", // Request JSON format response
+          format: "json",
           stream: false,
         });
 
-        // Parse the JSON response
+        // Parse the response content as JSON
         let result;
         try {
           const content = response.message.content;
-          // Sometimes Ollama might return JSON embedded in a code block or with extra text
-          // Try to extract just the JSON part using regex
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          const jsonString = jsonMatch ? jsonMatch[0] : content;
+          if (!content) throw new Error("Empty response from Llama 3");
 
-          result = JSON.parse(jsonString);
+          // Try to parse the response as JSON
+          result = JSON.parse(content);
 
           if (!result.correctedText || !result.title) {
             // Ensure we have both required fields
-            console.warn("Ollama response missing required fields:", content);
             throw new Error("Invalid response format");
           }
         } catch (parseError) {
-          console.error("Error parsing Ollama JSON response:", parseError);
-          // Extract title and text using simple heuristics if JSON parsing fails
-          const lines = response.message.content
-            .split("\n")
-            .filter((line) => line.trim());
-          const possibleTitle = lines[0]
-            ?.replace(/^(title|#)+[:\s]*/i, "")
-            .trim();
-          const correctedText = text.trim(); // Use original as fallback
+          console.error(
+            "Error parsing JSON response from Llama 3:",
+            parseError
+          );
+          // Fallback if JSON parsing fails
+          const content = response.message.content;
+
+          // Simple regex extraction for title and correctedText if JSON parsing fails
+          let title = "My Memory";
+          let correctedText = text;
+
+          // Try to extract title from response
+          const titleMatch = content.match(/title["\s:]+([^"]+)/i);
+          if (titleMatch && titleMatch[1]) {
+            title = titleMatch[1].trim();
+          }
+
+          // Try to extract correctedText from response
+          const textMatch = content.match(/correctedText["\s:]+([^"]+)/i);
+          if (textMatch && textMatch[1]) {
+            correctedText = textMatch[1].trim();
+          }
 
           result = {
-            correctedText: correctedText,
-            title: possibleTitle || "My Memory",
+            correctedText,
+            title,
           };
         }
 
@@ -913,87 +922,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({
           correctedText: result.correctedText,
           title: result.title,
-          provider: "ollama",
+          provider: "llama3",
         });
-      } catch (ollamaError) {
-        console.error("Ollama error:", ollamaError);
+      } catch (error) {
+        console.error("Error correcting transcript with Llama 3:", error);
 
-        // Fall back to OpenAI if available
-        if (openai) {
-          console.log("Falling back to OpenAI for transcript correction");
-          const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return both the corrected transcript and the title in JSON format.",
-              },
-              {
-                role: "user",
-                content: `Please correct this transcript and generate an appropriate title: "${text}"`,
-              },
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 1000,
-          });
+        // Simple fallback processing
+        // Create a title from the first few words
+        let title = "My Memory";
+        const firstSentence = text.split(/[.!?]/)[0].trim();
 
-          // Parse the OpenAI JSON response
-          try {
-            const content = response.choices[0].message.content;
-            if (!content) throw new Error("Empty response from OpenAI");
-            const result = JSON.parse(content);
-
-            if (!result.correctedText || !result.title) {
-              throw new Error("Invalid response format from OpenAI");
-            }
-
-            res.json({
-              correctedText: result.correctedText,
-              title: result.title,
-              provider: "openai",
-            });
-          } catch (parseError) {
-            console.error("Error parsing OpenAI JSON response:", parseError);
-            // Basic fallback if OpenAI fails
-            res.json({
-              correctedText: text,
-              title: "My Memory",
-              provider: "fallback",
-            });
+        if (firstSentence) {
+          const words = firstSentence.split(/\s+/);
+          if (words.length <= 7) {
+            title = firstSentence;
+          } else {
+            title = words.slice(0, 7).join(" ");
           }
-        } else {
-          // If OpenAI is not available, apply basic title extraction
-          console.log("Using basic title extraction as fallback");
-
-          // Extract a title from the text - use the first sentence or part of it
-          let title = "My Memory";
-          const firstSentence = text.split(/[.!?]/)[0].trim();
-          if (firstSentence) {
-            // If the first sentence is long, take just the first few words
-            const words = firstSentence.split(/\s+/);
-            if (words.length <= 7) {
-              title = firstSentence;
-            } else {
-              title = words.slice(0, 7).join(" ");
-            }
-
-            // Capitalize the first letter of the title
-            title = title.charAt(0).toUpperCase() + title.slice(1);
-          }
-
-          res.json({
-            correctedText: text,
-            title: title,
-            provider: "basic",
-          });
+          title = title.charAt(0).toUpperCase() + title.slice(1);
         }
+
+        res.json({
+          correctedText: text,
+          title: title,
+          fallback: true,
+          message: "Used basic processing due to Llama 3 error",
+        });
       }
     } catch (error) {
-      console.error("Error in correct-transcript endpoint:", error);
+      console.error("Error in transcript correction endpoint:", error);
       res.status(500).json({
         message: "Failed to correct transcript",
-        // Return original values as fallback
         correctedText: text,
         title: "New Memory",
       });
@@ -1151,9 +1110,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           console.log(`File saved at: ${filePath}`);
 
-          // Generate URL for the uploaded file - use port 8000 instead of 5000
+          // Determine the server host and port. Default to localhost:8000 if headers don't provide this info
           const serverHost = req.get("host") || "localhost:8000";
-          const protocol = req.protocol || "http";
+          const protocol =
+            req.headers["x-forwarded-proto"] || req.protocol || "http";
+
+          // Generate URL for the uploaded file
           const imageUrl = `${protocol}://${serverHost}/uploads/${fileName}`;
 
           console.log(`Image URL generated: ${imageUrl}`);
@@ -1221,9 +1183,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           console.log(`File saved at: ${filePath}`);
 
-          // Generate URL for the uploaded file
+          // Determine the server host and port. Default to localhost:8000 if headers don't provide this info
           const serverHost = req.get("host") || "localhost:8000";
-          const protocol = req.protocol || "http";
+          const protocol =
+            req.headers["x-forwarded-proto"] || req.protocol || "http";
+
+          // Generate URL for the uploaded file
           const audioUrl = `${protocol}://${serverHost}/uploads/${fileName}`;
 
           console.log(`Audio URL generated: ${audioUrl}`);
