@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -8,16 +8,24 @@ import MemoryCard from "@/components/memories/MemoryCard";
 import MemoryBookCard from "@/components/books/MemoryBookCard";
 import UpgradeModal from "@/components/subscription/UpgradeModal";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Image as ImageIcon } from "lucide-react";
 import {
   getUserProfile,
   getUserMemories,
   getUserBooks,
   addMemory,
-  enhanceStory,
+  uploadImage,
 } from "@/lib/firebase";
+import { enhanceStory, correctTranscriptAndGenerateTitle } from "@/lib/openai";
 import { getAuth } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 const Dashboard = () => {
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
@@ -28,6 +36,11 @@ const Dashboard = () => {
   const [isLoadingMemories, setIsLoadingMemories] = useState(true);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
   const [isProcessingRecording, setIsProcessingRecording] = useState(false);
+  const [showImageUploadDialog, setShowImageUploadDialog] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [pendingMemoryData, setPendingMemoryData] = useState<any>(null);
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const auth = getAuth();
   const { toast } = useToast();
@@ -160,110 +173,105 @@ const Dashboard = () => {
     setIsProcessingRecording(true);
 
     try {
-      // First show the transcribed text to the user
-      toast({
-        title: "Transcription Complete",
-        description:
-          "Your audio has been transcribed. Now enhancing your story...",
-      });
+      // First try to correct the transcript and generate a title
+      let enhancedTitle = data.title;
+      let correctedText = data.text;
 
-      // Generate more realistic enhanced text for demo purposes
-      let enhancedText = data.text;
-
-      // In test mode, simulate AI enhancement with a delay
-      if (sessionStorage.getItem("testModeEnabled") === "true") {
-        // Show an "enhancing" toast to simulate the AI processing
+      try {
+        // Show transcription toast
         toast({
-          title: "Enhancing Story",
+          title: "Transcription Complete",
           description:
-            "Our AI is turning your transcription into a rich, detailed memory...",
+            "Your audio has been transcribed. Now enhancing your story...",
         });
 
-        // Add a delay to simulate AI processing time (2 seconds)
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Try to correct the transcript and get a better title
+        const correctionResult = await correctTranscriptAndGenerateTitle(
+          data.text
+        );
+        correctedText = correctionResult.correctedText;
+        enhancedTitle = correctionResult.title || data.title;
+      } catch (correctionError) {
+        console.error("Error correcting transcript:", correctionError);
+        // Continue with original transcript and title
+      }
 
-        // Create a more detailed story that expands on the user's input
-        // First, identify potential keywords in the user's transcription
-        const userText = data.text.toLowerCase();
-        let storyTheme = "general";
+      // Now enhance the story using the OpenAI API
+      toast({
+        title: "Enhancing Your Memory",
+        description:
+          "Using AI to enhance your story with more details and better structure...",
+      });
 
-        // Determine the theme of the story based on keywords
-        if (
-          userText.includes("park") ||
-          userText.includes("walk") ||
-          userText.includes("nature") ||
-          userText.includes("bird") ||
-          userText.includes("tree") ||
-          userText.includes("outside")
-        ) {
-          storyTheme = "nature";
-        } else if (
-          userText.includes("lunch") ||
-          userText.includes("friend") ||
-          userText.includes("college") ||
-          userText.includes("meet") ||
-          userText.includes("school") ||
-          userText.includes("university")
-        ) {
-          storyTheme = "friendship";
-        } else if (
-          userText.includes("grandmother") ||
-          userText.includes("grandfather") ||
-          userText.includes("family") ||
-          userText.includes("cooking") ||
-          userText.includes("recipe") ||
-          userText.includes("home")
-        ) {
-          storyTheme = "family";
-        } else if (
-          userText.includes("travel") ||
-          userText.includes("trip") ||
-          userText.includes("vacation") ||
-          userText.includes("journey") ||
-          userText.includes("destination") ||
-          userText.includes("abroad")
-        ) {
-          storyTheme = "travel";
-        }
+      let enhancedResponse;
+      try {
+        enhancedResponse = await enhanceStory(correctedText);
+      } catch (error) {
+        console.error("Error enhancing story:", error);
+        // If enhancement fails, we'll use the original text
+        enhancedResponse = { enhancedText: correctedText };
 
-        // Set the enhancement prefix to remind the user this is their transcribed text
-        let enhancementPrefix = `${data.text}\n\n`;
-
-        // If transcription is very short, don't add the prefix
-        if (data.text.length < 15) {
-          enhancementPrefix = "";
-        }
-
-        // Generate theme-appropriate enhanced content
-        if (storyTheme === "nature") {
-          enhancedText = `${enhancementPrefix}As I was experiencing nature, I noticed how the world around me seemed alive with color and sound. The trees swayed gently in the breeze, their leaves creating a soothing rustling melody. Birds called to each other, their songs a reminder of nature's constant conversations. The light filtered through the canopy in golden rays, painting patterns on the ground. In these moments surrounded by natural beauty, I felt a deep sense of peace and connection to something larger than myself. It reminded me why I seek these quiet natural spaces - they restore something essential in my soul that the busy modern world often depletes.`;
-        } else if (storyTheme === "friendship") {
-          enhancedText = `${enhancementPrefix}Spending time with my friend brought back a flood of memories and emotions. We fell into our familiar patterns of conversation and humor almost immediately, as if no time had passed. There's something uniquely comforting about being with someone who has known you through different phases of life - they hold pieces of your history that might otherwise be forgotten. As we laughed about old stories and shared updates about our lives, I was struck by how rare and valuable these authentic connections are. Even as we've both changed and grown, the foundation of our friendship remains solid, a touchstone I can return to again and again throughout life's journey.`;
-        } else if (storyTheme === "family") {
-          enhancedText = `${enhancementPrefix}Family traditions have a way of weaving through our lives, connecting generations and creating a sense of continuity. The familiar scents, tastes, and rituals become more than just habits - they transform into vehicles that transport us through time, connecting us to loved ones both present and past. As I think about our family gatherings and the recipes passed down through generations, I realize these aren't just activities but a form of living heritage. In each gesture and shared moment, we honor those who came before us while creating new memories for those who will someday reminisce about us. These ties of tradition and shared experience form the unseen bonds that hold us together even when distance or time separates us.`;
-        } else if (storyTheme === "travel") {
-          enhancedText = `${enhancementPrefix}Traveling has always changed my perspective in unexpected ways. Beyond the excitement of seeing new places, there's something profound about stepping outside my familiar surroundings and routines. The world expands with each new experience, each conversation with someone whose life has taken a completely different path from my own. I find myself noticing small details I might overlook at home - the particular quality of light in a new landscape, unfamiliar scents and sounds, the rhythm of daily life in a different culture. These journeys become part of who I am, broadening my understanding and leaving me with memories that I can revisit long after I've returned home. Each trip feels like opening a new chapter in my personal story.`;
-        } else {
-          // For general themes, create an enhancement that builds on the transcription
-          enhancedText = `${enhancementPrefix}Reflecting more deeply on this experience, I'm reminded of how our most meaningful moments often arrive unexpectedly. What seems like an ordinary day can suddenly transform into a memory that stays with us for years to come. I try to remain present for these moments, to fully absorb the feelings, the surroundings, the small details that make each experience unique. Life moves so quickly sometimes that we risk missing the quiet significance of our daily experiences. But when we pause to truly notice and appreciate these moments, we create a treasury of memories that sustain us through life's inevitable challenges. This particular memory feels like one I'll return to often - a reminder of what truly matters in my journey.`;
-        }
-      } else {
-        // Normal enhancement for non-test mode
-        enhancedText =
-          data.text.length > 10
-            ? `${data.text}\n\nI still remember the feeling that day - the warmth in my heart, the sense of belonging. These are the memories we cherish forever.`
-            : data.text;
+        toast({
+          title: "Enhancement Incomplete",
+          description:
+            "We couldn't enhance your story due to a server issue. Your original memory has been preserved.",
+          variant: "destructive",
+        });
       }
 
       // Create a new memory with the audio URL and enhanced text
       const memoryData = {
-        title: data.title || "New Memory", // Use the AI-generated title or fallback
-        text: enhancedText,
-        audioUrl: data.audioUrl || "https://example.com/mock-audio.mp3", // Use provided URL or fallback
+        title: enhancedTitle || "New Memory",
+        text: enhancedResponse.enhancedText,
+        audioUrl: data.audioUrl,
         originalText: data.text,
         createdAt: new Date(),
       };
 
+      // Ask if user wants to add an image
+      setPendingMemoryData(memoryData);
+      setShowImageUploadDialog(true);
+    } catch (error) {
+      console.error("Error processing memory:", error);
+      toast({
+        title: "Error",
+        description: "Failed to process your memory. Please try again.",
+        variant: "destructive",
+      });
+      setIsProcessingRecording(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !pendingMemoryData)
+      return;
+
+    const file = e.target.files[0];
+    setIsUploading(true);
+
+    try {
+      const imageUrl = await uploadImage(file);
+
+      // Add the image URL to the memory data
+      saveMemoryWithImage({
+        ...pendingMemoryData,
+        imageUrl,
+      });
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      toast({
+        title: "Error",
+        description: "Failed to upload image. Saving memory without an image.",
+        variant: "destructive",
+      });
+
+      // Save without image if upload fails
+      saveMemoryWithImage(pendingMemoryData);
+    }
+  };
+
+  const saveMemoryWithImage = async (memoryData: any) => {
+    try {
       if (auth.currentUser) {
         // If we have a real user, save to Firebase
         await addMemory(memoryData);
@@ -282,6 +290,12 @@ const Dashboard = () => {
         ]);
       }
 
+      // Clean up
+      setShowImageUploadDialog(false);
+      setPendingMemoryData(null);
+      setIsUploading(false);
+      setIsProcessingRecording(false);
+
       toast({
         title: "Success!",
         description: "Your memory has been saved and enhanced.",
@@ -293,8 +307,18 @@ const Dashboard = () => {
         description: "Failed to save your memory. Please try again.",
         variant: "destructive",
       });
-    } finally {
+
+      // Clean up
+      setShowImageUploadDialog(false);
+      setPendingMemoryData(null);
+      setIsUploading(false);
       setIsProcessingRecording(false);
+    }
+  };
+
+  const skipImageUpload = () => {
+    if (pendingMemoryData) {
+      saveMemoryWithImage(pendingMemoryData);
     }
   };
 
@@ -495,6 +519,60 @@ const Dashboard = () => {
         isOpen={isUpgradeModalOpen}
         onClose={() => setIsUpgradeModalOpen(false)}
       />
+
+      {/* Image Upload Dialog */}
+      <Dialog
+        open={showImageUploadDialog}
+        onOpenChange={setShowImageUploadDialog}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add an Image to Your Memory</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="mb-4">
+              Would you like to add an image to your memory?
+            </p>
+
+            <div className="flex justify-center mb-4">
+              <label className="cursor-pointer">
+                <div className="bg-white border border-dashed border-neutral-300 rounded-md p-6 flex flex-col items-center justify-center">
+                  <ImageIcon className="h-8 w-8 text-neutral-400 mb-2" />
+                  <p className="text-sm text-neutral-500 text-center mb-1">
+                    Click to upload an image
+                  </p>
+                  <p className="text-xs text-neutral-400 text-center">
+                    JPG, PNG or JPEG (max. 5MB)
+                  </p>
+                </div>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  className="hidden"
+                  accept="image/jpeg,image/png,image/jpg"
+                  onChange={handleImageUpload}
+                  disabled={isUploading}
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={skipImageUpload}
+              disabled={isUploading}
+            >
+              Skip
+            </Button>
+            <Button
+              onClick={() => imageInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              {isUploading ? "Uploading..." : "Upload Image"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

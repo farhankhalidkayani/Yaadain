@@ -9,6 +9,8 @@ import dotenv from "dotenv";
 import { promisify } from "util";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+// Import Ollama client
+import { Ollama } from "ollama";
 
 // Set up ffmpeg path
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -16,14 +18,19 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 // Load environment variables directly in this file
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-// Configure OpenAI (still used for story enhancement, not for transcription)
+// Configure Ollama client
+const ollama = new Ollama({
+  host: process.env.OLLAMA_HOST || "http://localhost:11434",
+});
+
+// Keep OpenAI configuration for backward compatibility
 const openaiApiKey = process.env.OPENAI_API_KEY;
 if (!openaiApiKey) {
   console.warn(
-    "Warning: OPENAI_API_KEY is not set. Story enhancement features may not work correctly."
+    "Warning: OPENAI_API_KEY is not set. Using Ollama with Llama 3 instead."
   );
 }
-const openai = new OpenAI({ apiKey: openaiApiKey });
+const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
 // Import Whisper model from transformers (used for all voice transcription)
 let whisperPipeline: any = null;
@@ -761,29 +768,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Text is required" });
       }
 
-      // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a creative writing assistant that helps enhance personal stories and memories. Your task is to improve the transcribed story while maintaining the original meaning and personal voice. Add details, improve flow, and fix any grammar or structure issues. Format the story with the first line as a good title, followed by paragraphs.",
-          },
-          {
-            role: "user",
-            content: `Please enhance this transcribed memory: ${text}`,
-          },
-        ],
-        max_tokens: 1000,
-      });
+      console.log("Enhancing story with Ollama (Llama 3)...");
 
-      const enhancedText = response.choices[0].message.content;
+      try {
+        // Use Ollama with Llama 3 for story enhancement
+        const response = await ollama.chat({
+          model: "llama3", // Make sure this model is installed on your Ollama instance
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a creative writing assistant that helps enhance personal stories and memories. Your task is to improve the transcribed story while maintaining the original meaning and personal voice. Add details, improve flow, and fix any grammar or structure issues. Format the story with the first line as a good title, followed by paragraphs.",
+            },
+            {
+              role: "user",
+              content: `Please enhance this transcribed memory: ${text}`,
+            },
+          ],
+          stream: false,
+        });
 
-      res.json({ enhancedText });
+        // Extract the enhanced text from the response
+        const enhancedText = response.message.content;
+
+        console.log("Story enhancement successful with Llama 3");
+        res.json({ enhancedText });
+      } catch (ollamaError) {
+        console.error("Error with Ollama enhancement:", ollamaError);
+
+        // If Ollama fails, try OpenAI if available
+        if (openai) {
+          console.log("Falling back to OpenAI for story enhancement...");
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a creative writing assistant that helps enhance personal stories and memories. Your task is to improve the transcribed story while maintaining the original meaning and personal voice. Add details, improve flow, and fix any grammar or structure issues. Format the story with the first line as a good title, followed by paragraphs.",
+              },
+              {
+                role: "user",
+                content: `Please enhance this transcribed memory: ${text}`,
+              },
+            ],
+            max_tokens: 1000,
+          });
+
+          const enhancedText = response.choices[0].message.content;
+          res.json({ enhancedText, provider: "openai" });
+        } else {
+          // If OpenAI is not available, return a basic enhancement
+          const enhancedText = `${text.trim()}\n\nI cherish this memory and the feelings it brings back. These moments are what make life meaningful.`;
+          res.json({
+            enhancedText,
+            provider: "basic",
+            message:
+              "Enhancement services are currently unavailable. Basic formatting applied.",
+          });
+        }
+      }
     } catch (error) {
-      console.error("Error enhancing story:", error);
-      res.status(500).json({ message: "Failed to enhance story" });
+      console.error("Error in enhance-story endpoint:", error);
+      res.status(500).json({
+        message: "Failed to enhance story",
+        enhancedText: text, // Return original text as fallback
+      });
     }
   });
 
@@ -801,56 +851,146 @@ export async function registerRoutes(app: Express): Promise<Server> {
         text.substring(0, 50) + "..."
       );
 
-      // Use OpenAI to correct transcript and generate title
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return both the corrected transcript and the title in JSON format.",
-          },
-          {
-            role: "user",
-            content: `Please correct this transcript and generate an appropriate title: "${text}"`,
-          },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 1000,
-      });
-
-      // Parse the JSON response
-      let result;
       try {
-        const content = response.choices[0].message.content;
-        if (!content) throw new Error("Empty response from OpenAI");
-        result = JSON.parse(content);
+        // Use Ollama with Llama 3 for transcript correction and title generation
+        console.log("Using Ollama with Llama 3 for transcript correction");
+        const response = await ollama.chat({
+          model: "llama3", // Make sure this model is installed on your Ollama instance
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return your response in JSON format with 'correctedText' and 'title' fields.",
+            },
+            {
+              role: "user",
+              content: `Please correct this transcript and generate an appropriate title: "${text}"`,
+            },
+          ],
+          format: "json", // Request JSON format response
+          stream: false,
+        });
 
-        if (!result.correctedText || !result.title) {
-          // Ensure we have both required fields
-          throw new Error("Invalid response format");
+        // Parse the JSON response
+        let result;
+        try {
+          const content = response.message.content;
+          // Sometimes Ollama might return JSON embedded in a code block or with extra text
+          // Try to extract just the JSON part using regex
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          const jsonString = jsonMatch ? jsonMatch[0] : content;
+
+          result = JSON.parse(jsonString);
+
+          if (!result.correctedText || !result.title) {
+            // Ensure we have both required fields
+            console.warn("Ollama response missing required fields:", content);
+            throw new Error("Invalid response format");
+          }
+        } catch (parseError) {
+          console.error("Error parsing Ollama JSON response:", parseError);
+          // Extract title and text using simple heuristics if JSON parsing fails
+          const lines = response.message.content
+            .split("\n")
+            .filter((line) => line.trim());
+          const possibleTitle = lines[0]
+            ?.replace(/^(title|#)+[:\s]*/i, "")
+            .trim();
+          const correctedText = text.trim(); // Use original as fallback
+
+          result = {
+            correctedText: correctedText,
+            title: possibleTitle || "My Memory",
+          };
         }
-      } catch (parseError) {
-        console.error("Error parsing JSON response:", parseError);
-        // Fallback response if parsing fails
-        result = {
-          correctedText: text,
-          title: "My Memory",
-        };
+
+        console.log(`Generated title: "${result.title}"`);
+        console.log(
+          "Corrected text:",
+          result.correctedText.substring(0, 50) + "..."
+        );
+
+        res.json({
+          correctedText: result.correctedText,
+          title: result.title,
+          provider: "ollama",
+        });
+      } catch (ollamaError) {
+        console.error("Ollama error:", ollamaError);
+
+        // Fall back to OpenAI if available
+        if (openai) {
+          console.log("Falling back to OpenAI for transcript correction");
+          const response = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an expert at correcting speech-to-text transcriptions and generating appropriate titles for memories. Your task is to correct any transcription errors while preserving the meaning and generate a concise, descriptive title (5-7 words) that captures the essence of the memory. Return both the corrected transcript and the title in JSON format.",
+              },
+              {
+                role: "user",
+                content: `Please correct this transcript and generate an appropriate title: "${text}"`,
+              },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 1000,
+          });
+
+          // Parse the OpenAI JSON response
+          try {
+            const content = response.choices[0].message.content;
+            if (!content) throw new Error("Empty response from OpenAI");
+            const result = JSON.parse(content);
+
+            if (!result.correctedText || !result.title) {
+              throw new Error("Invalid response format from OpenAI");
+            }
+
+            res.json({
+              correctedText: result.correctedText,
+              title: result.title,
+              provider: "openai",
+            });
+          } catch (parseError) {
+            console.error("Error parsing OpenAI JSON response:", parseError);
+            // Basic fallback if OpenAI fails
+            res.json({
+              correctedText: text,
+              title: "My Memory",
+              provider: "fallback",
+            });
+          }
+        } else {
+          // If OpenAI is not available, apply basic title extraction
+          console.log("Using basic title extraction as fallback");
+
+          // Extract a title from the text - use the first sentence or part of it
+          let title = "My Memory";
+          const firstSentence = text.split(/[.!?]/)[0].trim();
+          if (firstSentence) {
+            // If the first sentence is long, take just the first few words
+            const words = firstSentence.split(/\s+/);
+            if (words.length <= 7) {
+              title = firstSentence;
+            } else {
+              title = words.slice(0, 7).join(" ");
+            }
+
+            // Capitalize the first letter of the title
+            title = title.charAt(0).toUpperCase() + title.slice(1);
+          }
+
+          res.json({
+            correctedText: text,
+            title: title,
+            provider: "basic",
+          });
+        }
       }
-
-      console.log(`Generated title: "${result.title}"`);
-      console.log(
-        "Corrected text:",
-        result.correctedText.substring(0, 50) + "..."
-      );
-
-      res.json({
-        correctedText: result.correctedText,
-        title: result.title,
-      });
     } catch (error) {
-      console.error("Error correcting transcript:", error);
+      console.error("Error in correct-transcript endpoint:", error);
       res.status(500).json({
         message: "Failed to correct transcript",
         // Return original values as fallback

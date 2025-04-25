@@ -95,16 +95,6 @@ export async function enhanceStory(
   text: string
 ): Promise<{ enhancedText: string }> {
   try {
-    // Apply simple enhancement in test mode
-    const testModeEnabled =
-      sessionStorage.getItem("testModeEnabled") === "true";
-    if (testModeEnabled) {
-      // This is a simplified enhancement that will work offline for testing
-      return {
-        enhancedText: `# A Special Memory\n\n${text}\n\nThis moment was captured on ${new Date().toLocaleDateString()}.`,
-      };
-    }
-
     // For production mode, call the backend endpoint
     const response = await fetch("/api/enhance-story", {
       method: "POST",
