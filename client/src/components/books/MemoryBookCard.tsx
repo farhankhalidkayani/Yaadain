@@ -1,6 +1,11 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { generateBookPDF } from "@/lib/pdfUtils";
+import { getBook, getUserMemories } from "@/lib/firebase";
+import { FileDown } from "lucide-react";
 
 interface MemoryBookProps {
   book: {
@@ -16,6 +21,9 @@ interface MemoryBookProps {
 }
 
 const MemoryBookCard = ({ book }: MemoryBookProps) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+  const { toast } = useToast();
+
   // Convert various timestamp formats to JS Date
   let createdAt: Date;
   if (book.createdAt instanceof Date) {
@@ -50,6 +58,58 @@ const MemoryBookCard = ({ book }: MemoryBookProps) => {
   const storiesCount = book.memories?.length || 0;
   const photosCount =
     book.memories?.filter((memory) => memory.imageUrl).length || 0;
+
+  const handleDownloadPdf = async (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (!book || isDownloading) return;
+
+    setIsDownloading(true);
+
+    try {
+      toast({
+        title: "Preparing PDF",
+        description: "Please wait while we generate your memory book PDF...",
+      });
+
+      // Need to fetch full book data and memories
+      const fullBook = await getBook(book.id);
+      if (!fullBook) {
+        throw new Error("Failed to load book details");
+      }
+
+      // Get memories for this book
+      const allMemories = await getUserMemories(fullBook.userId);
+      const bookMemoryIds =
+        fullBook.memories?.map((memory: any) => memory.id) || [];
+      const bookMemories = allMemories.filter((memory: any) =>
+        bookMemoryIds.includes(memory.id)
+      );
+
+      if (bookMemories.length === 0) {
+        throw new Error("This book has no memories to download");
+      }
+
+      await generateBookPDF(fullBook, bookMemories);
+
+      toast({
+        title: "Success",
+        description: "Your memory book PDF has been downloaded!",
+      });
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      toast({
+        title: "Error",
+        description:
+          typeof error === "string"
+            ? error
+            : "Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <Card className="bg-white rounded-lg shadow-lg border border-neutral-100 transform transition hover:-translate-y-1 hover:shadow-xl overflow-hidden">
@@ -102,17 +162,22 @@ const MemoryBookCard = ({ book }: MemoryBookProps) => {
 
           <Button
             variant="outline"
-            asChild
-            disabled={book.status !== "complete"}
+            onClick={handleDownloadPdf}
+            disabled={isDownloading}
             className={
-              book.status !== "complete" ? "opacity-50 cursor-not-allowed" : ""
+              isDownloading
+                ? "opacity-50 cursor-not-allowed"
+                : "text-primary hover:text-primary-dark border-primary hover:border-primary-dark"
             }
           >
-            <Link
-              href={book.status === "complete" ? `/order-book/${book.id}` : "#"}
-            >
-              Order Print
-            </Link>
+            {isDownloading ? (
+              "Downloading..."
+            ) : (
+              <>
+                <FileDown className="h-4 w-4 mr-2" />
+                Download PDF
+              </>
+            )}
           </Button>
         </div>
       </CardContent>
