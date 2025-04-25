@@ -452,15 +452,21 @@ const StoryDetail = () => {
                       <p className="text-neutral-500 text-center text-sm mb-4">
                         Add an image to enhance your memory
                       </p>
-                      <label className="cursor-pointer">
+                      <label htmlFor="image-upload" className="cursor-pointer">
                         <Button
                           variant="outline"
+                          type="button"
                           className={isUploading ? "opacity-50" : ""}
+                          disabled={isUploading}
+                          onClick={() =>
+                            document.getElementById("image-upload")?.click()
+                          }
                         >
                           <ImageIcon className="h-4 w-4 mr-2" />
                           {isUploading ? "Uploading..." : "Add Image"}
                         </Button>
                         <input
+                          id="image-upload"
                           type="file"
                           accept="image/*"
                           className="hidden"

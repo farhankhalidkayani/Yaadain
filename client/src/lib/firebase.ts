@@ -518,11 +518,14 @@ export const uploadImage = async (file: File): Promise<string> => {
       formData.append("userId", user.uid);
 
       console.log("Sending image upload request to server...");
+      console.log("Image file details:", file.name, file.size, file.type);
 
-      // Make request to server endpoint
+      // Make request to server endpoint with proper credentials
       const response = await fetch("/api/upload-image", {
         method: "POST",
         body: formData,
+        credentials: "include", // Include cookies for authentication
+        // Don't set Content-Type header - browser will set it with boundary for multipart/form-data
       });
 
       if (!response.ok) {
