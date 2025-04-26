@@ -86,8 +86,10 @@ loadWhisperModel();
 // Function to transcribe audio using OpenAI API as a fallback
 async function transcribeWithOpenAI(audioFilePath: string): Promise<string> {
   try {
-    if (!openaiApiKey) {
-      throw new Error("OpenAI API key not configured");
+    if (!openaiApiKey || !openai) {
+      throw new Error(
+        "OpenAI API key not configured or client not initialized"
+      );
     }
 
     console.log("Transcribing with OpenAI...");
@@ -832,7 +834,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error in enhance-story endpoint:", error);
       res.status(500).json({
         message: "Failed to enhance story",
-        enhancedText: text, // Return original text as fallback
+        enhancedText: req.body.text || "", // Return original text as fallback
       });
     }
   });

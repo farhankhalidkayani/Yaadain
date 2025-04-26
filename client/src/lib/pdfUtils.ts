@@ -59,6 +59,18 @@ const formatDate = (dateValue: any): string => {
   }
 };
 
+// Helper function to load image data from URL
+const loadImageData = async (imageUrl: string): Promise<string> => {
+  try {
+    const response = await fetch(imageUrl);
+    const imgData = await response.blob();
+    return URL.createObjectURL(imgData);
+  } catch (error) {
+    console.error("Failed to load image:", error);
+    throw error;
+  }
+};
+
 // Function to generate a PDF from memory book data
 export const generateBookPDF = async (
   book: Book,
@@ -121,10 +133,7 @@ export const generateBookPDF = async (
   // Add cover image if available
   if (book.coverUrl) {
     try {
-      // Fetch image
-      const response = await fetch(book.coverUrl);
-      const imgData = await response.blob();
-      const imgUrl = URL.createObjectURL(imgData);
+      const imgUrl = await loadImageData(book.coverUrl);
 
       // Insert image
       const imgWidth = 100;
@@ -155,8 +164,10 @@ export const generateBookPDF = async (
     });
   }
 
-  // Add memories
-  memories.forEach((memory, index) => {
+  // Add memories - process each memory one at a time to handle async image loading
+  for (let index = 0; index < memories.length; index++) {
+    const memory = memories[index];
+
     // Add a new page for each memory
     pdf.addPage();
 
@@ -202,43 +213,37 @@ export const generateBookPDF = async (
     // Add memory image if available
     if (memory.imageUrl) {
       try {
-        (async () => {
-          // Check if we need a new page for the image
-          if (yPos + 100 > pdf.internal.pageSize.getHeight() - 20) {
-            pdf.addPage();
-            yPos = 20;
-          }
+        // Check if we need a new page for the image
+        if (yPos + 100 > pdf.internal.pageSize.getHeight() - 20) {
+          pdf.addPage();
+          yPos = 20;
+        }
 
-          // Fetch image
-          const response = await fetch(memory.imageUrl);
-          const imgData = await response.blob();
-          const imgUrl = URL.createObjectURL(imgData);
+        // Load and add the image synchronously
+        const imgUrl = await loadImageData(memory.imageUrl);
 
-          // Insert image
-          const imgWidth = 150;
-          const imgHeight = 100;
+        // Insert image
+        const imgWidth = 150;
+        const imgHeight = 100;
 
-          pdf.addImage(imgUrl, "JPEG", 20, yPos, imgWidth, imgHeight);
+        pdf.addImage(imgUrl, "JPEG", 20, yPos, imgWidth, imgHeight);
 
-          // Clean up object URL
-          URL.revokeObjectURL(imgUrl);
-        })().catch((err) => {
-          console.error("Failed to load memory image:", err);
-        });
+        // Clean up object URL
+        URL.revokeObjectURL(imgUrl);
       } catch (error) {
-        console.error("Failed to load memory image:", error);
+        console.error(`Failed to load image for memory ${memory.id}:`, error);
       }
     }
 
     // Add footer with page number
     pdf.setFontSize(8);
     pdf.text(
-      `Page ${pdf.internal.getNumberOfPages()}`,
+      `Page ${pdf.internal.pages.length - 1}`,
       pdf.internal.pageSize.getWidth() - 20,
       pdf.internal.pageSize.getHeight() - 10,
       { align: "right" }
     );
-  });
+  }
 
   // Generate filename based on book title
   const filename = `${book.title
