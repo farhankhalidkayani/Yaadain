@@ -644,11 +644,15 @@ const BookDetail = () => {
               </Card>
 
               <div className="mt-4">
-                <label className="cursor-pointer w-full">
+                <label htmlFor="cover-upload" className="cursor-pointer w-full">
                   <Button
                     variant="outline"
                     className="w-full"
                     disabled={isUploading}
+                    type="button"
+                    onClick={() =>
+                      document.getElementById("cover-upload")?.click()
+                    }
                   >
                     <ImageIcon className="h-4 w-4 mr-2" />
                     {isUploading
@@ -658,6 +662,7 @@ const BookDetail = () => {
                       : "Add Cover"}
                   </Button>
                   <input
+                    id="cover-upload"
                     type="file"
                     accept="image/*"
                     className="hidden"
